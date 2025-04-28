@@ -338,16 +338,14 @@ export class UnknownException extends TaggedError("UnknownException")<{
   message: string = this.payload.message || "An unknown exception occurred";
 }
 
-type InferErrorValues<T> = T extends Err<infer E> ? E : never;
-
 type TagsOf<E> = E extends { _tag: infer T } ? (T extends string ? T : never) : never;
 
-export function isError<Result extends ResultLike<unknown, unknown>, E extends InferErrorValues<Result>>(
+export function isError<Result extends ResultLike<unknown, unknown>>(
   value: Result,
-): value is Result & Err<E>;
+): value is Result & Err<Result.InferErr<Result>>;
 export function isError<
   Result extends ResultLike<unknown, unknown>,
-  E extends InferErrorValues<Result>,
+  E extends Result.InferErr<Result>,
   const T extends TagsOf<E>,
 >(value: Result, tag: T): value is Extract<Result, Err<{ _tag: T }>>;
 export function isError(value: any, tag?: string): boolean {
