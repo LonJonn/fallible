@@ -149,6 +149,8 @@ describe("Result", () => {
   });
 
   describe("Generator functionality", () => {
+    class TestError extends Result.TaggedError("TestError")<string> {}
+
     it("should handle generator success", async () => {
       const gen = Result.gen(async function* () {
         const a = yield* ok(1);
@@ -161,7 +163,7 @@ describe("Result", () => {
       if (result.isOk) expect(result.value).toBe(3);
     });
 
-    it("should handle generator errors", async () => {
+    it("should handle errors", async () => {
       const gen = Result.gen(async function* () {
         yield* ok(1);
         yield* err("error");
@@ -171,6 +173,18 @@ describe("Result", () => {
       const result = await gen();
       expect(result.isError).toBe(true);
       if (result.isError) expect(result.error).toBe("error");
+    });
+
+    it("should handle tagged errors", async () => {
+      const gen = Result.gen(async function* () {
+        yield* ok(1);
+        yield* new TestError("error");
+        return 42; // Should not reach here
+      });
+
+      const result = await gen();
+      expect(result.isError).toBe(true);
+      if (result.isError) expect(result.error.payload).toBe("error");
     });
   });
 

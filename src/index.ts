@@ -42,6 +42,11 @@ const _err = <E>(error: E): Err<E> => new Err(error);
 export const ok = <A>(value: A): Result<A, never> => new Result(Promise.resolve(new Ok(value)));
 export const err = <E>(error: E): Result<never, E> => new Result(Promise.resolve(new Err(error)));
 
+export namespace Result {
+  export type InferOk<Y> = Y extends Result<infer A, any> ? A : Y extends Ok<infer A> ? A : never;
+  export type InferErr<Y> = Y extends Result<any, infer E> ? E : Y extends Err<infer E> ? E : never;
+}
+
 export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>> {
   private _promise: PromiseLike<Ok<A> | Err<E>>;
 
@@ -282,12 +287,9 @@ type GeneratorYield<G> = G extends AsyncGenerator<infer Y, any, any> ? Y : never
 
 type GeneratorReturn<G> = G extends AsyncGenerator<any, infer R, any> ? R : never;
 
-type ErrorsOf<Y> =
-  Y extends Result<any, infer E> ? E : Y extends { readonly isError: true; readonly error: infer E } ? E : never;
-
 function runAsync_<G extends AsyncGenerator<any, any, any>>(
   iterator: G,
-): Result<GeneratorReturn<G>, ErrorsOf<GeneratorYield<G>>> {
+): Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>> {
   return new Result(
     (async () => {
       while (true) {
@@ -304,7 +306,7 @@ function runAsync_<G extends AsyncGenerator<any, any, any>>(
 
 function gen<Args extends any[], G extends AsyncGenerator<any, any, any>>(
   fn: (...args: Args) => G,
-): (...args: Args) => Result<GeneratorReturn<G>, ErrorsOf<GeneratorYield<G>>> {
+): (...args: Args) => Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>> {
   return (...args: Args) => {
     const iterator = fn(...args);
     return runAsync_(iterator);
