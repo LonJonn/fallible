@@ -1,0 +1,4 @@
+{
+  extends: ["github>lonjonn/renovate-config"],
+  automerge: true,
+}
