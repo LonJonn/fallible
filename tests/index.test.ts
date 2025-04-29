@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { Result, UnknownException, err, ok, pipe } from "../src";
 
+describe("Scratchpad", () => {
+  class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
+
+  it("_", async () => {
+    const result = await pipe(
+      await err(new TestError({ message: "test" })),
+      Result.catchTag("TestError", () => ok(2)),
+    );
+    expect(result.isOk).toBe(true);
+    if (result.isOk) expect(result.value).toBe(2);
+  });
+});
+
 describe("Result", () => {
+  class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
+  class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
+
   describe("Creation and basic functionality", () => {
     it("should create Ok result", async () => {
       const result = ok(42);
@@ -107,19 +123,24 @@ describe("Result", () => {
       expect(sideEffect).toBe("error");
     });
 
-    it("should unwrapOr with fallback", async () => {
+    it("should method unwrapOr with fallback", async () => {
       const okResult = ok(42);
       expect(await okResult.unwrapOr(0)).toBe(42);
 
       const errResult = err("error");
       expect(await errResult.unwrapOr(0)).toBe(0);
     });
+
+    it("should static unwrapOr with fallback", async () => {
+      const okResult = ok(42);
+      expect(await pipe(okResult, Result.unwrapOr(0))).toBe(42);
+
+      const errResult = err("error");
+      expect(await pipe(errResult, Result.unwrapOr(0))).toBe(0);
+    });
   });
 
   describe("TaggedError and error handling", () => {
-    class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
-    class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
-
     it("should create tagged errors", () => {
       const error = new TestError({ message: "test" });
       expect(error._tag).toBe("TestError");
@@ -149,8 +170,6 @@ describe("Result", () => {
   });
 
   describe("Generator functionality", () => {
-    class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
-
     it("should handle generator success", async () => {
       const gen = Result.gen(async function* () {
         const a = yield* ok(1);
@@ -207,12 +226,10 @@ describe("Result", () => {
       }
     });
 
-    class FooError extends Result.TaggedError("FooError") {}
-
     it("should throw with Result.die", async () => {
       const result = pipe(
-        err(new FooError()),
-        Result.catchTag("FooError", (e) => Result.die(e)),
+        err(new TestError({ message: "test" })),
+        Result.catchTag("TestError", (e) => Result.die(e)),
       );
 
       await expect(result).rejects.toThrow();
