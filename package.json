@@ -18,12 +18,13 @@
     "url": "https://github.com/sponsors/lonjonn"
   },
   "files": [
+    "dist",
     "src"
   ],
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
+    ".": "./dist/index.js",
     "./package.json": "./package.json"
   },
   "publishConfig": {
