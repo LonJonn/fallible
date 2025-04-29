@@ -1,6 +1,6 @@
 {
   "name": "@lonjonn/fallible",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "packageManager": "pnpm@10.8.1",
   "description": "My awesome typescript library",
   "type": "module",
