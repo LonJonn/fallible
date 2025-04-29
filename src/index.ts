@@ -41,6 +41,9 @@ const _err = <E>(error: E): Err<E> => new Err(error);
 
 export const ok = <A>(value: A): Result<A, never> => new Result(Promise.resolve(new Ok(value)));
 export const err = <E>(error: E): Result<never, E> => new Result(Promise.resolve(new Err(error)));
+const die = <T>(value: T): Result<never, never> => {
+  throw value;
+};
 
 export namespace Result {
   /* Extracts the Ok channel of a Result */
@@ -104,6 +107,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
 
   static ok = ok;
   static err = err;
+  static die = die;
 
   static gen = gen;
   static TaggedError = TaggedError;

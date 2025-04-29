@@ -207,6 +207,17 @@ describe("Result", () => {
       }
     });
 
+    class FooError extends Result.TaggedError("FooError") {}
+
+    it("should throw with Result.die", async () => {
+      const result = pipe(
+        err(new FooError()),
+        Result.catchTag("FooError", (e) => Result.die(e)),
+      );
+
+      await expect(result).rejects.toThrow();
+    });
+
     it("should handle try with custom error handling", async () => {
       const result = await Result.try({
         try: () => {
