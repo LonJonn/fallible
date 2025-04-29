@@ -13,6 +13,7 @@ type DistributeOk<A> = A extends Ok<infer U> ? (U extends unknown ? Ok<U> : neve
 type DistributeErr<E> = E extends Err<infer U> ? (U extends unknown ? Err<U> : never) : never;
 
 type ResultLike<A = never, E = never> = DistributeOk<Ok<A>> | DistributeErr<Err<E>>;
+type ResultLikeIso<A = never, E = never> = ResultLike<A, E> | Promise<ResultLike<A, E>>;
 
 export interface Ok<A> {
   readonly isOk: true;
@@ -139,23 +140,23 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
 
   // ---- map -------------------------------------------------------------------------------
   static map = dual<
-    <A2, A = never>(cb: (value: A) => A2) => <E = never>(self: Result<A, E> | ResultLike<A, E>) => Result<A2, E>,
-    <A2, A = never, E = never>(self: Result<A, E> | ResultLike<A, E>, cb: (value: A) => A2) => Result<A2, E>
+    <A2, A = never>(cb: (value: A) => A2) => <E = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Result<A2, E>,
+    <A2, A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>, cb: (value: A) => A2) => Result<A2, E>
   >(2, (self, cb) => new Result(Promise.resolve(self).then((r) => (r.isOk ? _ok(cb(r.value)) : r))));
 
   // ---- mapError --------------------------------------------------------------------------
   static mapError = dual<
-    <E2, E = never>(cb: (e: E) => E2) => <A = never>(self: Result<A, E> | ResultLike<A, E>) => Result<A, E2>,
-    <E2, A = never, E = never>(self: Result<A, E> | ResultLike<A, E>, cb: (e: E) => E2) => Result<A, E2>
+    <E2, E = never>(cb: (e: E) => E2) => <A = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Result<A, E2>,
+    <E2, A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>, cb: (e: E) => E2) => Result<A, E2>
   >(2, (self, cb) => new Result(Promise.resolve(self).then((r) => (r.isError ? _err(cb(r.error)) : r))));
 
   // ---- flatMap / andThen -----------------------------------------------------------------
   static flatMap = dual<
     <A = never, A2 = never, E2 = never>(
       cb: (a: A) => Result<A2, E2> | A2,
-    ) => <E = never>(self: Result<A, E> | ResultLike<A, E>) => Result<A2, E | E2>,
+    ) => <E = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Result<A2, E | E2>,
     <A = never, E = never, A2 = never, E2 = never>(
-      self: Result<A, E> | ResultLike<A, E>,
+      self: Result<A, E> | ResultLikeIso<A, E>,
       cb: (a: A) => Result<A2, E2> | A2,
     ) => Result<A2, E | E2>
   >(
@@ -176,9 +177,9 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   static tap = dual<
     <A = never, E2 = never>(
       cb: (a: A) => Result<never, E2> | void,
-    ) => <E = never>(self: Result<A, E> | ResultLike<A, E>) => Result<A, E | E2>,
+    ) => <E = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Result<A, E | E2>,
     <A = never, E = never, E2 = never>(
-      self: Result<A, E> | ResultLike<A, E>,
+      self: Result<A, E> | ResultLikeIso<A, E>,
       cb: (a: A) => Result<never, E2> | void,
     ) => Result<A, E | E2>
   >(
@@ -197,9 +198,9 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   static tapError = dual<
     <E2, E = never>(
       cb: (e: E) => Result<unknown, E2> | void,
-    ) => <A = never>(self: Result<A, E> | ResultLike<A, E>) => Result<A, E | E2>,
+    ) => <A = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Result<A, E | E2>,
     <A = never, E = never, E2 = never>(
-      self: Result<A, E> | ResultLike<A, E>,
+      self: Result<A, E> | ResultLikeIso<A, E>,
       cb: (e: E) => Result<unknown, E2> | void,
     ) => Result<A, E | E2>
   >(
@@ -219,9 +220,9 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
     <const Tag extends Result.TagsOf<E>, E = never, E2 = never>(
       tag: Tag,
       cb: (err: Extract<E, { _tag: Tag }>) => Result<unknown, E2> | void,
-    ) => <A = never>(self: Result<A, E> | ResultLike<A, E>) => Result<A, E | E2>,
+    ) => <A = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Result<A, E | E2>,
     <const Tag extends Result.TagsOf<E>, A = never, E = never, E2 = never>(
-      self: Result<A, E> | ResultLike<A, E>,
+      self: Result<A, E> | ResultLikeIso<A, E>,
       tag: Tag,
       cb: (err: Extract<E, { _tag: Tag }>) => Result<unknown, E2> | void,
     ) => Result<A, E | E2>
@@ -242,9 +243,9 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   static orElse = dual<
     <A2, E2, E = never>(
       cb: (e: E) => Result<A2, E2>,
-    ) => <A = never>(self: Result<A, E> | ResultLike<A, E>) => Result<A | A2, E2>,
+    ) => <A = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Result<A | A2, E2>,
     <A2, E2, A = never, E = never>(
-      self: Result<A, E> | ResultLike<A, E>,
+      self: Result<A, E> | ResultLikeIso<A, E>,
       cb: (e: E) => Result<A2, E2>,
     ) => Result<A | A2, E2>
   >(2, (self, cb) => new Result(Promise.resolve(self).then(async (r) => (r.isOk ? r : await cb(r.error)))));
@@ -286,7 +287,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
       E = never,
     >(
       cases: Cases,
-    ) => (self: Result<A, E> | ResultLike<A, E>) => Result<
+    ) => (self: Result<A, E> | ResultLikeIso<A, E>) => Result<
       | A
       | {
           [K in keyof Cases]: Cases[K] extends (...args: Array<any>) => Result<infer A, any> ? A : never;
@@ -307,7 +308,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
       A = never,
       E = never,
     >(
-      self: Result<A, E> | ResultLike<A, E>,
+      self: Result<A, E> | ResultLikeIso<A, E>,
       cases: Cases,
     ) => Result<
       | A
@@ -337,8 +338,8 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
 
   // ---- unwrapOr --------------------------------------------------------------------------
   static unwrapOr = dual<
-    <A2>(fallback: A2) => <A = never, E = never>(self: Result<A, E> | ResultLike<A, E>) => Promise<A | A2>,
-    <A2, A = never, E = never>(self: Result<A, E> | ResultLike<A, E>, fallback: A2) => Promise<A | A2>
+    <A2>(fallback: A2) => <A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Promise<A | A2>,
+    <A2, A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>, fallback: A2) => Promise<A | A2>
   >(2, (self, fallback) => Promise.resolve(self).then((r) => (r.isOk ? r.value : fallback)));
 }
 
@@ -416,8 +417,8 @@ export class UnknownException extends TaggedError("UnknownException")<{
   }
 }
 
-export function isError<Result extends ResultLike>(value: Result): value is Result & Err<Result.InferErr<Result>>;
-export function isError<Result extends ResultLike, const Tag extends Result.TagsOf<Result.InferErr<Result>>>(
+export function isError<Result extends ResultLikeIso>(value: Result): value is Result & Err<Result.InferErr<Result>>;
+export function isError<Result extends ResultLikeIso, const Tag extends Result.TagsOf<Result.InferErr<Result>>>(
   value: Result,
   tag: Tag,
 ): value is Extract<Result, Err<{ _tag: Tag }>>;
