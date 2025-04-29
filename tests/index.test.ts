@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Result, err, ok, pipe } from "../src";
+import { Result, UnknownException, err, ok, pipe } from "../src";
 
 describe("Result", () => {
   describe("Creation and basic functionality", () => {
@@ -117,19 +117,19 @@ describe("Result", () => {
   });
 
   describe("TaggedError and error handling", () => {
-    class TestError extends Result.TaggedError("TestError")<string> {}
-    class AnotherError extends Result.TaggedError("AnotherError")<string> {}
+    class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
+    class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
 
     it("should create tagged errors", () => {
-      const error = new TestError("test");
+      const error = new TestError({ message: "test" });
       expect(error._tag).toBe("TestError");
-      expect(error.payload).toBe("test");
+      expect(error.message).toBe("test");
     });
 
     it("should catch specific error tags", async () => {
       const result = await pipe(
-        err(new TestError("test")),
-        Result.catchTag("TestError", (e: TestError) => ok(e.payload.toUpperCase())),
+        err(new TestError({ message: "test" })),
+        Result.catchTag("TestError", (e: TestError) => ok(e.message.toUpperCase())),
       );
       expect(result.isOk).toBe(true);
       if (result.isOk) expect(result.value).toBe("TEST");
@@ -137,10 +137,10 @@ describe("Result", () => {
 
     it("should handle multiple error tags", async () => {
       const result = await pipe(
-        err(Math.random() > 0 ? new TestError("test") : new AnotherError("another")),
+        err(Math.random() > 0 ? new TestError({ message: "test" }) : new AnotherError({ message: "another" })),
         Result.catchTags({
-          TestError: (e) => ok(e.payload.toUpperCase()),
-          AnotherError: (e) => ok(e.payload.toLowerCase()),
+          TestError: (e) => ok(e.message.toUpperCase()),
+          AnotherError: (e) => ok(e.message.toLowerCase()),
         }),
       );
       expect(result.isOk).toBe(true);
@@ -149,7 +149,7 @@ describe("Result", () => {
   });
 
   describe("Generator functionality", () => {
-    class TestError extends Result.TaggedError("TestError")<string> {}
+    class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
 
     it("should handle generator success", async () => {
       const gen = Result.gen(async function* () {
@@ -178,13 +178,13 @@ describe("Result", () => {
     it("should handle tagged errors", async () => {
       const gen = Result.gen(async function* () {
         yield* ok(1);
-        yield* new TestError("error");
+        yield* new TestError({ message: "error" });
         return 42; // Should not reach here
       });
 
       const result = await gen();
       expect(result.isError).toBe(true);
-      if (result.isError) expect(result.error.payload).toBe("error");
+      if (result.isError) expect(result.error.message).toBe("error");
     });
   });
 
@@ -201,8 +201,9 @@ describe("Result", () => {
       });
       expect(result.isError).toBe(true);
       if (result.isError) {
-        expect(result.error.payload.message).toBeUndefined();
-        expect(result.error.payload.cause).toBeInstanceOf(Error);
+        expect(result.error.message).toBe("An unknown exception occurred");
+        expect(result.error).toBeInstanceOf(UnknownException);
+        expect(result.error.cause).toBeInstanceOf(Error);
       }
     });
 

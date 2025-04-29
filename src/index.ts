@@ -12,7 +12,7 @@ export { flow, pipe } from "./utils";
 type DistributeOk<A> = A extends Ok<infer U> ? (U extends unknown ? Ok<U> : never) : never;
 type DistributeErr<E> = E extends Err<infer U> ? (U extends unknown ? Err<U> : never) : never;
 
-type ResultLike<A, E> = Ok<A> | Err<E>;
+type ResultLike<A = unknown, E = unknown> = DistributeOk<Ok<A>> | DistributeErr<Err<E>>;
 
 export class Ok<A> {
   readonly isOk = true as const;
@@ -43,8 +43,23 @@ export const ok = <A>(value: A): Result<A, never> => new Result(Promise.resolve(
 export const err = <E>(error: E): Result<never, E> => new Result(Promise.resolve(new Err(error)));
 
 export namespace Result {
+  /* Extracts the Ok channel of a Result */
   export type InferOk<Y> = Y extends Result<infer A, any> ? A : Y extends Ok<infer A> ? A : never;
+
+  /* Extracts the Err channel of a Result */
   export type InferErr<Y> = Y extends Result<any, infer E> ? E : Y extends Err<infer E> ? E : never;
+
+  /* Extracts the tags of an error type */
+  export type TagsOf<E> =
+    E extends Result<unknown, infer U>
+      ? TagsOf<U>
+      : E extends Err<infer U>
+        ? TagsOf<U>
+        : E extends { _tag: infer T }
+          ? T extends string
+            ? T
+            : never
+          : never;
 }
 
 export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>> {
@@ -164,11 +179,11 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
 
   // ---- tapErrorTag -----------------------------------------------------------------------
   static tapErrorTag = dual<
-    <E, const Tag extends TagsOf<E>, E2 = never>(
+    <E, const Tag extends Result.TagsOf<E>, E2 = never>(
       tag: Tag,
       cb: (err: Extract<E, { _tag: Tag }>) => Result<unknown, E2> | void,
     ) => <A>(self: Result<A, E>) => Result<A, E | E2>,
-    <A, E, const Tag extends TagsOf<E>, E2 = never>(
+    <A, E, const Tag extends Result.TagsOf<E>, E2 = never>(
       self: Result<A, E>,
       tag: Tag,
       cb: (err: Extract<E, { _tag: Tag }>) => Result<unknown, E2> | void,
@@ -194,11 +209,11 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
 
   // ---- catchTag --------------------------------------------------------------------------
   static catchTag = dual<
-    <E, const Tag extends TagsOf<E>, A2, E2>(
+    <E, const Tag extends Result.TagsOf<E>, A2, E2>(
       tag: Tag,
       cb: (e: Extract<E, { _tag: Tag }>) => Result<A2, E2>,
     ) => <A>(self: Result<A, E>) => Result<A | A2, Exclude<E, { _tag: Tag }> | E2>,
-    <A, E, const Tag extends TagsOf<E>, A2, E2>(
+    <A, E, const Tag extends Result.TagsOf<E>, A2, E2>(
       self: Result<A, E>,
       tag: Tag,
       cb: (e: Extract<E, { _tag: Tag }>) => Result<A2, E2>,
@@ -221,11 +236,11 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
       A,
       E,
       Cases extends {
-        [K in TagsOf<E>]+?: (error: Extract<E, { _tag: K }>) => Result<any, any>;
+        [K in Result.TagsOf<E>]+?: (error: Extract<E, { _tag: K }>) => Result<any, any>;
       } & (unknown extends E
         ? {}
         : {
-            [K in Exclude<keyof Cases, TagsOf<E>>]: never;
+            [K in Exclude<keyof Cases, Result.TagsOf<E>>]: never;
           }),
     >(
       cases: Cases,
@@ -243,11 +258,11 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
       A,
       E,
       Cases extends {
-        [K in TagsOf<E>]+?: (error: Extract<E, { _tag: K }>) => Result<any, any>;
+        [K in Result.TagsOf<E>]+?: (error: Extract<E, { _tag: K }>) => Result<any, any>;
       } & (unknown extends E
         ? {}
         : {
-            [K in Exclude<keyof Cases, TagsOf<E>>]: never;
+            [K in Exclude<keyof Cases, Result.TagsOf<E>>]: never;
           }),
     >(
       self: Result<A, E>,
@@ -317,37 +332,47 @@ function gen<Args extends any[], G extends AsyncGenerator<any, any, any>>(
 /*  Errors Helpers                                    */
 /* -------------------------------------------------- */
 
-export function TaggedError<Tag extends string>(tag: Tag) {
-  return class<Payload = unknown> extends Error {
-    readonly _tag: Tag = tag;
-    constructor(readonly payload: Payload) {
+class YieldableError extends Error {
+  async *[Symbol.asyncIterator](): AsyncGenerator<Err<this>, never, unknown> {
+    yield _err(this);
+    return undefined as never;
+  }
+}
+
+export function TaggedError<Tag extends string>(
+  tag: Tag,
+): new <Payload extends Record<string, any> = {}>(
+  args: keyof Payload extends never
+    ? void
+    : { readonly [P in keyof Payload as P extends "_tag" ? never : P]: Payload[P] },
+) => YieldableError & { readonly _tag: Tag } & Readonly<Payload> {
+  class Base extends YieldableError {
+    readonly _tag = tag;
+    constructor(payload: any) {
       super(tag);
       Object.setPrototypeOf(this, new.target.prototype);
+      Object.assign(this, payload);
     }
-    async *[Symbol.asyncIterator](): AsyncGenerator<Err<this>, never, unknown> {
-      yield _err(this);
-      return undefined as never;
-    }
-  };
+  }
+  (Base.prototype as any).name = tag;
+  return Base as any;
 }
 
 export class UnknownException extends TaggedError("UnknownException")<{
   cause: unknown;
   message?: string | undefined;
 }> {
-  message: string = this.payload.message || "An unknown exception occurred";
+  constructor(error: { cause: unknown; message?: string }) {
+    super(error);
+    this.message = error.message || "An unknown exception occurred";
+  }
 }
 
-type TagsOf<E> = E extends { _tag: infer T } ? (T extends string ? T : never) : never;
-
-export function isError<Result extends ResultLike<unknown, unknown>>(
+export function isError<Result extends ResultLike>(value: Result): value is Result & Err<Result.InferErr<Result>>;
+export function isError<Result extends ResultLike, const Tag extends Result.TagsOf<Result.InferErr<Result>>>(
   value: Result,
-): value is Result & Err<Result.InferErr<Result>>;
-export function isError<
-  Result extends ResultLike<unknown, unknown>,
-  E extends Result.InferErr<Result>,
-  const T extends TagsOf<E>,
->(value: Result, tag: T): value is Extract<Result, Err<{ _tag: T }>>;
+  tag: Tag,
+): value is Extract<Result, Err<{ _tag: Tag }>>;
 export function isError(value: any, tag?: string): boolean {
   if (value && value.isError === true) {
     if (tag === undefined) return true;
