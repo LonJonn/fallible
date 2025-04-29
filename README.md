@@ -34,7 +34,7 @@ import { Result, ok, pipe } from "fallible";
 declare const queryDb: <T>(query: string) => Result<T, DatabaseError>;
 
 // Create yieldable errors
-class BannedAccountError extends TaggedError("BannedAccountError")<{ reason: string }> {}
+class BannedAccountError extends Result.TaggedError("BannedAccountError")<{ reason: string }> {}
 
 // Define your Result function
 const getUser = Result.gen(async function* (id: string) {
