@@ -12,7 +12,7 @@
 
 ---
 
-## 📦 Installation
+## 📦 Installation
 
 ```bash
 npm install fallible
@@ -20,33 +20,83 @@ npm install fallible
 pnpm add fallible
 ```
 
-> The package ships with fully‑typed ESM & CJS builds plus `.d.ts` typings.
-
 ---
 
-## 🚀 Quick start
+## 🚀 Quick start
+
+> **Note:** Type annotations below are included for clarity, but inferred automatically.
+
+### Creating Results
 
 ```ts
-import { ok, err, Result, pipe } from "fallible";
+import { Result, ok, pipe } from "fallible";
 
-// Create values
-const hello = ok("Hello 🌏");
-const boom = err(new Error("💥"));
+declare const queryDb: <T>(query: string) => Result<T, DatabaseError>;
 
-// Consume with `await`  (Result is Promise‑like)
-console.log(await hello); // Ok { value: "Hello 🌏" }
+// Create yieldable errors
+class BannedAccountError extends TaggedError("BannedAccountError")<{ reason: string }> {}
 
-// Or branch explicitly
-pipe(
-  hello,
-  Result.map((s) => s.toUpperCase()),
-  Result.unwrapOr("fallback"), // → "HELLO 🌏"
+// Define your Result function
+const getUser = Result.gen(async function* (id: string) {
+  // `yield*` will unwrap Ok values and pass Err values through, tracking them at the type level
+  const user = yield* queryDb<User>(`SELECT * FROM users WHERE id = ${id}`);
+
+  if (user.banned) {
+    // TaggedErrors are directly yieldable
+    return yield* new BannedAccountError({ reason: user.banReason });
+  }
+
+  return user;
+});
+
+// Will have the following type:
+declare const getUser: (id: string) => Result<User, DatabaseError | BannedAccountError>;
+```
+
+```ts
+// Result's are Promise-like so you can just unwrap them with `await`
+const user: Ok<User> | Err<DatabaseError> | Err<BannedAccountError> = await getUser("1");
+
+if (user.isError) {
+  user.error; // -> DatabaseError | BannedAccountError
+} else {
+  user.value; // -> User
+}
+
+// --- Or use the `isError` helper
+
+if (isError(user, "BannedAccountError")) {
+  // user is now narrowed to Err<BannedAccountError>
+  console.warn(user.error.reason);
+}
+
+// --- Or use the `unwrapOr` helper
+
+const user: User | null = await getUser("1").unwrapOr(null);
+
+// --- Or use the Result modifier APIs
+
+// Result<string | null, never>
+const userNameResult: Result<string | null, never> = pipe(
+  getUser("1"),
+  Result.andThen((user) => user.name),
+  Result.catchTags({
+    DatabaseError: () => ok(null),
+    BannedAccountError: (e) => ok(`Banned User (${e.reason})`),
+  }),
 );
+
+// --- Then concurrently run multiple Results (Short-circuits on first error)
+
+const combined: Result<[User, string | null], DatabaseError | BannedAccountError> = Result.all([
+  getUser("1"),
+  userNameResult,
+]);
 ```
 
 ---
 
-## 🧩 API overview
+## 🧩 API overview
 
 |  Category           | Helpers                                                    | Description                                            |
 | ------------------- | ---------------------------------------------------------- | ------------------------------------------------------ |
@@ -59,7 +109,7 @@ pipe(
 | **Generators**      | `Result.gen`                                               | Write synchronous‑looking async pipelines              |
 | **Utilities**       | `try`, `all`, `isError`, `TaggedError`, `UnknownException` |
 
-### Result.gen — sequential async pipelines
+### Result.gen — sequential async pipelines
 
 ```ts
 const fetchJson = Result.gen(function* (url: string) {
@@ -72,7 +122,7 @@ const fetchJson = Result.gen(function* (url: string) {
 const data = await fetchJson("/api/things").unwrapOr({});
 ```
 
-### Pattern‑matching with tagged errors
+### Pattern‑matching with tagged errors
 
 ```ts
 class NotFound extends TaggedError("NotFound")<{}> {}
@@ -89,7 +139,7 @@ const user: Result<User | { message: string }, never> = pipe(
 );
 ```
 
-### Composing many results
+### Composing many results
 
 ```ts
 const res = Result.all([ok(1), ok(2), err("bang")]);
@@ -97,7 +147,7 @@ const res = Result.all([ok(1), ok(2), err("bang")]);
 await res; // → Err<"bang"> (short‑circuits on first error)
 ```
 
-### Type‑safe guards
+### Type‑safe guards
 
 ```ts
 if (Result.isError(res, "Invalid")) {
@@ -107,7 +157,7 @@ if (Result.isError(res, "Invalid")) {
 
 ---
 
-## 🔌 Interop & Utility helpers
+## 🔌 Interop & Utility helpers
 
 - **`try`** – wrap any promise‑returning function, catching thrown exceptions
 - **`all`** – run many `Result`s in parallel, stop at first failure
@@ -115,13 +165,13 @@ if (Result.isError(res, "Invalid")) {
 
 ---
 
-## 📚 Full API reference
+## 📚 Full API reference
 
 See the inline JSDoc & source – the entire implementation fits in <300 LOC.
 
 ---
 
-## 👩🏻‍💻 Contributing
+## 👩🏻‍💻 Contributing
 
 PRs are welcome! Open an issue to discuss bugs or ideas.
 
@@ -133,6 +183,21 @@ pnpm test
 
 ---
 
-## 🪪 License
+## 🙏 Acknowledgments
+
+This project draws heavy inspiration:
+
+- [Effect](https://github.com/Effect-TS/effect) - A powerful TypeScript framework for building type-safe, scalable applications.
+
+  - `Result.gen` inspired by Effect's `Effect.gen`
+  - Modifier APIs like `andThen`, `catchTags`, etc. are inspired by Effect -`pipe`, `flow`, and `dual` utilities are copied directly from Effect's source code (MIT Licensed)
+
+- [neverthrow](https://github.com/supermacro/neverthrow) - A type-safe error handling solution for TypeScript that helped shape the API design of this library.
+
+  - Result class inspired by neverthrow's `ResultAsync` class
+
+---
+
+##  🪪 License
 
 MIT © 2025 Leon Salsiccia
