@@ -14,33 +14,45 @@ type DistributeErr<E> = E extends Err<infer U> ? (U extends unknown ? Err<U> : n
 
 type ResultLike<A = never, E = never> = DistributeOk<Ok<A>> | DistributeErr<Err<E>>;
 
-export class Ok<A> {
-  readonly isOk = true as const;
-  readonly isError = false as const;
-  constructor(readonly value: A) {}
-
-  async *[Symbol.asyncIterator](): AsyncGenerator<never, A, unknown> {
-    yield undefined as never;
-    return this.value;
-  }
+export interface Ok<A> {
+  readonly isOk: true;
+  readonly isError: false;
+  readonly value: A;
+  [Symbol.asyncIterator](): AsyncGenerator<never, A, unknown>;
 }
 
-export class Err<E> {
-  readonly isOk = false as const;
-  readonly isError = true as const;
-  constructor(readonly error: E) {}
+export interface Err<E> {
+  readonly isOk: false;
+  readonly isError: true;
+  readonly error: E;
+  [Symbol.asyncIterator](): AsyncGenerator<Err<E>, never, unknown>;
+}
 
-  async *[Symbol.asyncIterator](): AsyncGenerator<Err<E>, never, unknown> {
+export const createOk = <A>(value: A): Ok<A> => ({
+  isOk: true as const,
+  isError: false as const,
+  value,
+  async *[Symbol.asyncIterator]() {
+    yield undefined as never;
+    return value;
+  },
+});
+
+export const createErr = <E>(error: E): Err<E> => ({
+  isOk: false as const,
+  isError: true as const,
+  error,
+  async *[Symbol.asyncIterator]() {
     yield this;
     return undefined as never;
-  }
-}
+  },
+});
 
-const _ok = <A>(value: A): Ok<A> => new Ok(value);
-const _err = <E>(error: E): Err<E> => new Err(error);
+const _ok = <A>(value: A): Ok<A> => createOk(value);
+const _err = <E>(error: E): Err<E> => createErr(error);
 
-export const ok = <A>(value: A): Result<A, never> => new Result(Promise.resolve(new Ok(value)));
-export const err = <E>(error: E): Result<never, E> => new Result(Promise.resolve(new Err(error)));
+export const ok = <A>(value: A): Result<A, never> => new Result(Promise.resolve(createOk(value)));
+export const err = <E>(error: E): Result<never, E> => new Result(Promise.resolve(createErr(error)));
 const die = <T>(value: T): Result<never, never> => {
   throw value;
 };
@@ -69,7 +81,13 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   private _promise: PromiseLike<Ok<A> | Err<E>>;
 
   constructor(res: PromiseLike<Ok<A> | Err<E>>) {
-    this._promise = res;
+    // We remove our async iterator when unwrapping the Result via await so that we just
+    // get back abasic, plain object which is serializable and works with complex features
+    // such as NextJS's "use cache" compiler.
+    this._promise = res.then((r) => {
+      delete (r as any)[Symbol.asyncIterator];
+      return r;
+    });
   }
 
   then<TResult1 = Ok<A> | Err<E>, TResult2 = never>(
@@ -97,7 +115,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   /*  Instance methods                                 */
   /* -------------------------------------------------- */
 
-  unwrapOr<A2>(fallback: A2): PromiseLike<A | A2> {
+  async unwrapOr<A2>(fallback: A2): Promise<A | A2> {
     return this.then((out) => (out.isOk ? out.value : fallback));
   }
 
@@ -341,7 +359,7 @@ function runAsync_<G extends AsyncGenerator<any, any, any>>(
         const step = await iterator.next();
         if (step.done) return _ok(step.value) as any;
         const yielded = step.value as any;
-        if (yielded instanceof Err || (yielded && yielded.isError === true)) {
+        if ("isError" in yielded && yielded.isError === true) {
           return yielded as any;
         }
       }

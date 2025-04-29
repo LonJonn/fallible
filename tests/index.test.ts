@@ -1,23 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { Result, UnknownException, err, ok, pipe } from "../src";
 
-describe("Scratchpad", () => {
-  class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
+class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
+class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
 
+describe("Scratchpad", () => {
   it("_", async () => {
-    const result = await pipe(
-      await err(new TestError({ message: "test" })),
-      Result.catchTag("TestError", () => ok(2)),
-    );
-    expect(result.isOk).toBe(true);
-    if (result.isOk) expect(result.value).toBe(2);
+    // Empty
   });
 });
 
 describe("Result", () => {
-  class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
-  class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
-
   describe("Creation and basic functionality", () => {
     it("should create Ok result", async () => {
       const result = ok(42);
@@ -39,6 +32,14 @@ describe("Result", () => {
 
       const errResult = await err("error");
       if (errResult.isError) expect(errResult.error).toBe("error");
+    });
+  });
+
+  describe("Serialization", () => {
+    it("removes [Symbol.asyncIterator] when awaited", async () => {
+      const result = ok(42);
+      const value = await result;
+      expect(value[Symbol.asyncIterator]).toBeUndefined();
     });
   });
 
