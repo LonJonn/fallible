@@ -417,11 +417,13 @@ export class UnknownException extends TaggedError("UnknownException")<{
   }
 }
 
-export function isError<Result extends ResultLikeIso>(value: Result): value is Result & Err<Result.InferErr<Result>>;
-export function isError<Result extends ResultLikeIso, const Tag extends Result.TagsOf<Result.InferErr<Result>>>(
+export function isError<Result extends ResultLike<unknown, unknown>>(
   value: Result,
-  tag: Tag,
-): value is Extract<Result, Err<{ _tag: Tag }>>;
+): value is Extract<Result, Err<unknown>>;
+export function isError<
+  Result extends ResultLike<unknown, unknown>,
+  const Tag extends Result.TagsOf<Result.InferErr<Result>>,
+>(value: Result, tag: Tag): value is Extract<Result, Err<{ _tag: Tag }>>;
 export function isError(value: any, tag?: string): boolean {
   if (value && value.isError === true) {
     if (tag === undefined) return true;

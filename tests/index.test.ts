@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Result, UnknownException, err, ok, pipe } from "../src";
+import { Result, UnknownException, err, isError, ok, pipe } from "../src";
 
 class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
 class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
@@ -167,6 +167,30 @@ describe("Result", () => {
       );
       expect(result.isOk).toBe(true);
       if (result.isOk) expect(result.value).toBe("TEST");
+    });
+
+    it("should greedy narrow types with isError", async () => {
+      const result = await (Math.random()
+        ? err(new TestError({ message: "test" }))
+        : Math.random()
+          ? err(new AnotherError({ message: "another" }))
+          : ok("yes"));
+
+      if (isError(result)) {
+        expect(result.isError).toBe(true);
+      }
+    });
+
+    it("should narrow specific types with isError", async () => {
+      const result = await (Math.random()
+        ? err(new TestError({ message: "test" }))
+        : Math.random()
+          ? err(new AnotherError({ message: "another" }))
+          : ok("yes"));
+
+      if (isError(result, "TestError")) {
+        expect(result.error.message).toBe("test");
+      }
     });
   });
 
