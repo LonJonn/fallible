@@ -51,7 +51,7 @@ export const _err = <E>(error: E): Err<E> => ({
 
 export const ok = <A>(value: A): Result<A, never> => new Result(Promise.resolve(_ok(value)));
 export const err = <E>(error: E): Result<never, E> => new Result(Promise.resolve(_err(error)));
-const die = <T>(value: T): Result<never, never> => {
+const die = (value: unknown): Result<never, never> => {
   throw value;
 };
 
@@ -79,13 +79,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   private _promise: PromiseLike<Ok<A> | Err<E>>;
 
   constructor(res: PromiseLike<Ok<A> | Err<E>>) {
-    // We remove our async iterator when unwrapping the Result via await so that we just
-    // get back abasic, plain object which is serializable and works with complex features
-    // such as NextJS's "use cache" compiler.
-    this._promise = res.then((r) => {
-      delete (r as any)[Symbol.asyncIterator];
-      return r;
-    });
+    this._promise = res;
   }
 
   then<TResult1 = Ok<A> | Err<E>, TResult2 = never>(
@@ -119,6 +113,10 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
 
   async unwrapAsTuple(): Promise<[E, null] | [null, A]> {
     return this.then((out) => (out.isOk ? ([null, out.value] as const) : ([out.error, null] as const)));
+  }
+
+  asSerializable(): Result<A, E> {
+    return new Result(this.then((r) => JSON.parse(JSON.stringify(r))));
   }
 
   /* -------------------------------------------------- */
@@ -348,6 +346,11 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
     self: R,
   ): Promise<[Result.InferErr<R>, null] | [null, Result.InferOk<R>]> =>
     Promise.resolve(self).then((r) => (r.isOk ? [null, r.value] : [r.error, null]));
+
+  // ---- asSerializable --------------------------------------------------------------------
+  static asSerializable<A, E>(self: Result<A, E>) {
+    return self.asSerializable();
+  }
 }
 
 /* -------------------------------------------------- */
@@ -384,6 +387,10 @@ function gen<Args extends any[], G extends AsyncGenerator<any, any, any>>(
   };
 }
 
+gen.serializable = function <Args extends any[], G extends AsyncGenerator<any, any, any>>(fn: (...args: Args) => G) {
+  return (...args: Args) => this(fn)(...args).asSerializable();
+};
+
 /* -------------------------------------------------- */
 /*  Errors Helpers                                    */
 /* -------------------------------------------------- */
@@ -397,17 +404,26 @@ class YieldableError extends Error {
 
 export function TaggedError<Tag extends string>(
   tag: Tag,
-): new <Payload extends Record<string, any> = {}>(
+): new <Payload extends { message?: string; cause?: unknown } = {}>(
   args: keyof Payload extends never
     ? void
-    : { readonly [P in keyof Payload as P extends "_tag" ? never : P]: Payload[P] },
+    : { message?: string; cause?: unknown } & {
+        readonly [P in keyof Payload as P extends "_tag" ? never : P]: Payload[P];
+      },
 ) => YieldableError & { readonly _tag: Tag } & Readonly<Payload> {
   class Base extends YieldableError {
     readonly _tag = tag;
+    private readonly _payload: any;
+
     constructor(payload: any) {
       super(tag);
       Object.setPrototypeOf(this, new.target.prototype);
       Object.assign(this, payload);
+      this._payload = payload;
+    }
+
+    toJSON() {
+      return { _tag: this._tag, ...JSON.parse(JSON.stringify(this._payload)) };
     }
   }
   (Base.prototype as any).name = tag;
@@ -421,6 +437,10 @@ export class UnknownException extends TaggedError("UnknownException")<{
   constructor(error: { cause: unknown; message?: string }) {
     super(error);
     this.message = error.message || "An unknown exception occurred";
+  }
+
+  toJSON() {
+    return { _tag: this._tag, message: this.message, cause: this.cause };
   }
 }
 
@@ -479,3 +499,18 @@ function all<const R extends readonly Result<any, any>[]>(
     }),
   );
 }
+
+/* -------------------------------------------------- */
+/*  Utility                                           */
+/* -------------------------------------------------- */
+
+// /** Utility type to serialize a value to a JSON-serializable object */
+// type SerializeJSON<T> = T extends (...args: any[]) => any
+//   ? never
+//   : T extends object
+//     ? {
+//         [P in keyof T as SerializeJSON<T[P]> extends never ? never : P]: SerializeJSON<T[P]>;
+//       }
+//     : T extends undefined | null | string | number | boolean
+//       ? T
+//       : never;

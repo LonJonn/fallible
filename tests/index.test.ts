@@ -4,8 +4,6 @@ import { Result, UnknownException, err, isError, ok, pipe } from "../src";
 class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
 class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
 
-const test = new TestError({ message: "test" });
-
 describe("Scratchpad", () => {
   it("_", async () => {
     // Empty
@@ -38,10 +36,22 @@ describe("Result", () => {
   });
 
   describe("Serialization", () => {
-    it("removes [Symbol.asyncIterator] when awaited", async () => {
-      const result = ok(42);
+    it("removes [Symbol.asyncIterator] when serialized", async () => {
+      const result = ok(42).asSerializable();
       const value = await result;
       expect(value[Symbol.asyncIterator]).toBeUndefined();
+    });
+
+    it("serializes YieldableError", async () => {
+      const result = Result.gen.serializable(async function* () {
+        yield* new TestError({ message: "test" });
+        yield* new AnotherError({ message: "another" });
+      })();
+
+      const value = await result;
+      expect(value.isError).toBe(true);
+      if (value.isError) expect(value.error).not.toBeInstanceOf(TestError);
+      if (value.isError) expect(value.error.message).toBe("test");
     });
   });
 
