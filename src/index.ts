@@ -120,6 +120,10 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
     return this.then((out) => (out.isOk ? out.value : fallback));
   }
 
+  async toTuple(): Promise<[E, null] | [null, A]> {
+    return this.then((out) => (out.isOk ? ([null, out.value] as const) : ([out.error, null] as const)));
+  }
+
   /* -------------------------------------------------- */
   /*  Static methods                                   */
   /* -------------------------------------------------- */

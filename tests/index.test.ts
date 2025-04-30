@@ -139,6 +139,22 @@ describe("Result", () => {
       const errResult = err("error");
       expect(await pipe(errResult, Result.unwrapOr(0))).toBe(0);
     });
+
+    it("should toTuple", async () => {
+      const result = Result.gen(async function* () {
+        if (Math.random()) {
+          yield* new AnotherError({ message: "bad" });
+          return yield* new TestError({ message: "bad" });
+        }
+
+        return 42;
+      })();
+
+      const [error, value] = await result.toTuple();
+
+      expect(error).toBeInstanceOf(TestError);
+      expect(value).toBeNull();
+    });
   });
 
   describe("TaggedError and error handling", () => {
