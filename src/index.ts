@@ -29,7 +29,7 @@ export interface Err<E> {
   [Symbol.asyncIterator](): AsyncGenerator<Err<E>, never, unknown>;
 }
 
-export const createOk = <A>(value: A): Ok<A> => ({
+export const _ok = <A>(value: A): Ok<A> => ({
   isOk: true as const,
   isError: false as const,
   value,
@@ -39,7 +39,7 @@ export const createOk = <A>(value: A): Ok<A> => ({
   },
 });
 
-export const createErr = <E>(error: E): Err<E> => ({
+export const _err = <E>(error: E): Err<E> => ({
   isOk: false as const,
   isError: true as const,
   error,
@@ -49,11 +49,8 @@ export const createErr = <E>(error: E): Err<E> => ({
   },
 });
 
-const _ok = <A>(value: A): Ok<A> => createOk(value);
-const _err = <E>(error: E): Err<E> => createErr(error);
-
-export const ok = <A>(value: A): Result<A, never> => new Result(Promise.resolve(createOk(value)));
-export const err = <E>(error: E): Result<never, E> => new Result(Promise.resolve(createErr(error)));
+export const ok = <A>(value: A): Result<A, never> => new Result(Promise.resolve(_ok(value)));
+export const err = <E>(error: E): Result<never, E> => new Result(Promise.resolve(_err(error)));
 const die = <T>(value: T): Result<never, never> => {
   throw value;
 };
