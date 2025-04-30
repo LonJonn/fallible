@@ -79,7 +79,13 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   private _promise: PromiseLike<Ok<A> | Err<E>>;
 
   constructor(res: PromiseLike<Ok<A> | Err<E>>) {
-    this._promise = res;
+    // We remove our async iterator when unwrapping the Result via await so that we just
+    // get back a basic, plain object which is serializable and works with complex features
+    // such as NextJS's "use cache" compiler.
+    this._promise = res.then((r) => {
+      delete (r as any)[Symbol.asyncIterator];
+      return r;
+    });
   }
 
   then<TResult1 = Ok<A> | Err<E>, TResult2 = never>(
@@ -404,12 +410,10 @@ class YieldableError extends Error {
 
 export function TaggedError<Tag extends string>(
   tag: Tag,
-): new <Payload extends { message?: string; cause?: unknown } = {}>(
+): new <Payload extends {} = {}>(
   args: keyof Payload extends never
     ? void
-    : { message?: string; cause?: unknown } & {
-        readonly [P in keyof Payload as P extends "_tag" ? never : P]: Payload[P];
-      },
+    : { readonly [P in keyof Payload as P extends "_tag" ? never : P]: Payload[P] },
 ) => YieldableError & { readonly _tag: Tag } & Readonly<Payload> {
   class Base extends YieldableError {
     readonly _tag = tag;
