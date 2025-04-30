@@ -117,7 +117,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
     return this.then((out) => (out.isOk ? out.value : fallback));
   }
 
-  async toTuple(): Promise<[E, null] | [null, A]> {
+  async unwrapAsTuple(): Promise<[E, null] | [null, A]> {
     return this.then((out) => (out.isOk ? ([null, out.value] as const) : ([out.error, null] as const)));
   }
 
@@ -342,6 +342,12 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
     <A2>(fallback: A2) => <A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Promise<A | A2>,
     <A2, A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>, fallback: A2) => Promise<A | A2>
   >(2, (self, fallback) => Promise.resolve(self).then((r) => (r.isOk ? r.value : fallback)));
+
+  // ---- unwrapAsTuple ---------------------------------------------------------------------
+  static unwrapAsTuple = <R extends Result<any, any> | ResultLikeIso<any, any>>(
+    self: R,
+  ): Promise<[Result.InferErr<R>, null] | [null, Result.InferOk<R>]> =>
+    Promise.resolve(self).then((r) => (r.isOk ? [null, r.value] : [r.error, null]));
 }
 
 /* -------------------------------------------------- */

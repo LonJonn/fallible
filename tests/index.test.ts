@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Result, UnknownException, err, isError, ok, pipe } from "../src";
+import { Result, UnknownException, err, isError, ok, pipe, type Err, type Ok } from "../src";
 
 class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
 class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
@@ -124,7 +124,7 @@ describe("Result", () => {
       expect(sideEffect).toBe("error");
     });
 
-    it("should method unwrapOr with fallback", async () => {
+    it("should instance method unwrapOr with fallback", async () => {
       const okResult = ok(42);
       expect(await okResult.unwrapOr(0)).toBe(42);
 
@@ -132,7 +132,7 @@ describe("Result", () => {
       expect(await errResult.unwrapOr(0)).toBe(0);
     });
 
-    it("should static unwrapOr with fallback", async () => {
+    it("should static method unwrapOr with fallback", async () => {
       const okResult = ok(42);
       expect(await pipe(okResult, Result.unwrapOr(0))).toBe(42);
 
@@ -140,7 +140,7 @@ describe("Result", () => {
       expect(await pipe(errResult, Result.unwrapOr(0))).toBe(0);
     });
 
-    it("should toTuple", async () => {
+    it("should instance method unwrapAsTuple", async () => {
       const result = Result.gen(async function* () {
         if (Math.random()) {
           yield* new AnotherError({ message: "bad" });
@@ -150,7 +150,23 @@ describe("Result", () => {
         return 42;
       })();
 
-      const [error, value] = await result.toTuple();
+      const [error, value] = await result.unwrapAsTuple();
+
+      expect(error).toBeInstanceOf(TestError);
+      expect(value).toBeNull();
+    });
+
+    it("should instance method unwrapAsTuple", async () => {
+      const result = await Result.gen(async function* () {
+        if (Math.random()) {
+          yield* new AnotherError({ message: "bad" });
+          return yield* new TestError({ message: "bad" });
+        }
+
+        return 42;
+      })();
+
+      const [error, value] = await pipe(result, Result.unwrapAsTuple);
 
       expect(error).toBeInstanceOf(TestError);
       expect(value).toBeNull();
