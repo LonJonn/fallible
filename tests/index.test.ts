@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { Result, UnknownException, err, isError, ok, pipe, type Err, type Ok } from "../src";
+import { Result, UnknownException, err, isError, ok, pipe } from "../src";
 
 class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
 class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
+
+const test = new TestError({ message: "test" });
 
 describe("Scratchpad", () => {
   it("_", async () => {
@@ -152,7 +154,7 @@ describe("Result", () => {
 
       const [error, value] = await result.unwrapAsTuple();
 
-      expect(error).toBeInstanceOf(TestError);
+      expect(error).toBeInstanceOf(AnotherError);
       expect(value).toBeNull();
     });
 
@@ -168,7 +170,7 @@ describe("Result", () => {
 
       const [error, value] = await pipe(result, Result.unwrapAsTuple);
 
-      expect(error).toBeInstanceOf(TestError);
+      expect(error).toBeInstanceOf(AnotherError);
       expect(value).toBeNull();
     });
   });
