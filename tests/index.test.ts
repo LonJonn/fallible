@@ -60,7 +60,7 @@ describe("Result", () => {
       const r = Result.try(() => 42);
       const r2 = ok(42);
 
-      expectTypeOf(r.unwrap).toEqualTypeOf<"❌ .unwrap() is only available when Result<E> is never">();
+      expectTypeOf(r.unwrap).toEqualTypeOf<never>();
       expectTypeOf(r2.unwrap).toEqualTypeOf<() => Promise<number>>();
     });
 

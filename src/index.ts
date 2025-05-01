@@ -146,9 +146,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
       return r.value;
     });
 
-  unwrap = Result.unwrap.bind(null, this as any) as [E] extends [never]
-    ? () => Promise<A>
-    : "❌ .unwrap() is only available when Result<E> is never";
+  unwrap = Result.unwrap.bind(null, this as any) as [E] extends [never] ? () => Promise<A> : never;
 
   // ---- unwrapOr --------------------------------------------------------------------------
   static unwrapOr = dual<
