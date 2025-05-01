@@ -137,6 +137,37 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   /*  Manipulation helpers (dual‑powered)               */
   /* -------------------------------------------------- */
 
+  // ---- unwrap -----------------------------------------------------------------------------
+  static unwrap = <A>(self: Result<A, never> | ResultLikeIso<A, never>): Promise<A> =>
+    Promise.resolve(self).then((r) => {
+      if (r.isError) {
+        throw new Error("Cannot unwrap an Err value");
+      }
+      return r.value;
+    });
+
+  unwrap = Result.unwrap.bind(null, this as any) as [E] extends [never]
+    ? () => Promise<A>
+    : "❌ .unwrap() is only available when Result<E> is never";
+
+  // ---- unwrapOr --------------------------------------------------------------------------
+  static unwrapOr = dual<
+    <A2>(fallback: A2) => <A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Promise<A | A2>,
+    <A2, A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>, fallback: A2) => Promise<A | A2>
+  >(2, (self, fallback) => Promise.resolve(self).then((r) => (r.isOk ? r.value : fallback)));
+
+  unwrapOr = Result.unwrapOr.bind(null, this) as <A2>(fallback: A2) => Promise<A | A2>;
+
+  // ---- unwrapAsTuple ---------------------------------------------------------------------
+  static unwrapAsTuple = <R extends Result<any, any> | ResultLikeIso<any, any>>(
+    self: R,
+  ): Promise<[Result.InferErr<R>, null] | [null, Result.InferOk<R>]> =>
+    Promise.resolve(self).then((r) => (r.isOk ? [null, r.value] : [r.error, null]));
+
+  unwrapAsTuple = Result.unwrapAsTuple.bind(null, this) as () => Promise<
+    [Result.InferErr<this>, null] | [null, Result.InferOk<this>]
+  >;
+
   // ---- map -------------------------------------------------------------------------------
   static map = dual<
     <A2, A = never>(cb: (value: A) => A2) => <E = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Result<A2, E>,
@@ -382,24 +413,6 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
     | {
         [K in keyof Cases]: Cases[K] extends (...args: Array<any>) => Result<any, infer E> ? E : never;
       }[keyof Cases]
-  >;
-
-  // ---- unwrapOr --------------------------------------------------------------------------
-  static unwrapOr = dual<
-    <A2>(fallback: A2) => <A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>) => Promise<A | A2>,
-    <A2, A = never, E = never>(self: Result<A, E> | ResultLikeIso<A, E>, fallback: A2) => Promise<A | A2>
-  >(2, (self, fallback) => Promise.resolve(self).then((r) => (r.isOk ? r.value : fallback)));
-
-  unwrapOr = Result.unwrapOr.bind(null, this) as <A2>(fallback: A2) => Promise<A | A2>;
-
-  // ---- unwrapAsTuple ---------------------------------------------------------------------
-  static unwrapAsTuple = <R extends Result<any, any> | ResultLikeIso<any, any>>(
-    self: R,
-  ): Promise<[Result.InferErr<R>, null] | [null, Result.InferOk<R>]> =>
-    Promise.resolve(self).then((r) => (r.isOk ? [null, r.value] : [r.error, null]));
-
-  unwrapAsTuple = Result.unwrapAsTuple.bind(null, this) as () => Promise<
-    [Result.InferErr<this>, null] | [null, Result.InferOk<this>]
   >;
 }
 

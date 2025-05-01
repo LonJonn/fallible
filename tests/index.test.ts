@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { Result, UnknownException, err, isError, ok, pipe } from "../src";
 
 class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
@@ -56,6 +56,14 @@ describe("Result", () => {
   });
 
   describe("Result methods", () => {
+    it(".unwrap() has correct types", async () => {
+      const r = Result.try(() => 42);
+      const r2 = ok(42);
+
+      expectTypeOf(r.unwrap).toEqualTypeOf<"❌ .unwrap() is only available when Result<E> is never">();
+      expectTypeOf(r2.unwrap).toEqualTypeOf<() => Promise<number>>();
+    });
+
     it("should map Ok values", async () => {
       const result = await pipe(
         ok(42),
