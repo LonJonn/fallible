@@ -180,7 +180,9 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
 
   static andThen = this.flatMap;
 
-  andThen = Result.andThen.bind(null, this) as typeof this.flatMap;
+  andThen = Result.andThen.bind(null, this) as <A2 = never, E2 = never>(
+    cb: (a: A) => Result<A2, E2> | A2,
+  ) => Result<A2, E | E2>;
 
   // ---- tap -------------------------------------------------------------------------------
   static tap = dual<
