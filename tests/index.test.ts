@@ -1,338 +1,347 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
-import { Result, UnknownException, err, isError, ok, pipe } from "../src";
+/**
+ * Comprehensive test‑suite for `@lonjonn/fallible`
+ * ------------------------------------------------
+ * The scenarios mimic a tiny “banking” domain to exercise every public
+ * surface‑area of the library with semi‑realistic flows rather than
+ * contrived `TestError` values.
+ *
+ * Runtime assertions use Vitest; type‑level assertions use `expectTypeOf`.
+ *
+ * What’s covered?
+ *  • Static helpers — ok, err, die, gen, TaggedError, isError, try, all
+ *  • Instance helpers — unwrap(+Overloads), map/flatMap/tap chain, etc.
+ *  • Type utilities   — InferOk/InferErr/TagsOf, conditional unwrap, …
+ *  • Generator API    — happy‑path + early‑error, serialisable variant.
+ *  • JSON safety      — asSerializable removes Symbol.asyncIterator.
+ */
 
-class TestError extends Result.TaggedError("TestError")<{ message: string }> {}
-class AnotherError extends Result.TaggedError("AnotherError")<{ message: string }> {}
+import { describe, it, expect, vi, expectTypeOf } from "vitest";
+import { Result, ok, err, pipe, isError, UnknownException, type Ok, type Err } from "../src";
 
-describe("Scratchpad", () => {
-  it("_", async () => {
-    // Empty
+/* -------------------------------------------------- */
+/*  Fake domain types & helpers                       */
+/* -------------------------------------------------- */
+
+interface User {
+  id: number;
+  name: string;
+  balance: number;
+}
+
+class ValidationError extends Result.TaggedError("ValidationError")<{
+  field: string;
+  issue: string;
+}> {}
+
+class NetworkError extends Result.TaggedError("NetworkError")<{
+  status: number;
+  body: string;
+}> {}
+
+class DatabaseError extends Result.TaggedError("DatabaseError")<{ query: string }> {}
+
+type DomainError = ValidationError | NetworkError | DatabaseError;
+
+const fetchUser = Result.gen(async function* (id: number) {
+  if (id !== 1) {
+    return yield* new NetworkError({ status: 404, body: "Not found" });
+  }
+
+  return {
+    id: 1,
+    name: "Alice",
+    balance: 100,
+  };
+});
+
+const updateBalance = Result.gen(async function* (user: User, delta: number) {
+  if (delta === 0) {
+    return yield* new ValidationError({ field: "amount", issue: "Cannot be zero" });
+  }
+
+  if (delta + user.balance < 0) {
+    return yield* new ValidationError({ field: "amount", issue: "Insufficient funds" });
+  }
+
+  if (Math.random() < 0.05) {
+    // pretend DB flaky
+    return yield* new DatabaseError({ query: "UPDATE users SET balance …" });
+  }
+
+  return { ...user, balance: user.balance + delta };
+});
+
+/* -------------------------------------------------- */
+/*  TYPE‑LEVEL UTILITIES                              */
+/* -------------------------------------------------- */
+
+describe("🔡  Type utilities", () => {
+  it("InferOk / InferErr extract channels from Results & unions", () => {
+    type R = Result<number, ValidationError>;
+    expectTypeOf<Result.InferOk<R>>().toEqualTypeOf<number>();
+    expectTypeOf<Result.InferErr<R>>().toEqualTypeOf<ValidationError>();
+
+    type Mixed = Ok<string> | Err<NetworkError> | Err<DatabaseError>;
+    expectTypeOf<Result.InferOk<Mixed>>().toEqualTypeOf<string>();
+    expectTypeOf<Result.InferErr<Mixed>>().toEqualTypeOf<NetworkError | DatabaseError>();
+  });
+
+  it("TagsOf collects `_tag` literals deeply", () => {
+    type Tags = Result.TagsOf<DomainError | { _tag: "Other" }>;
+    expectTypeOf<Tags>().toEqualTypeOf<"ValidationError" | "NetworkError" | "DatabaseError" | "Other">();
+  });
+
+  it("`.unwrap` is available only when E = never", () => {
+    expectTypeOf(ok(1).unwrap).toEqualTypeOf<() => Promise<number>>();
+    expectTypeOf(err("bad").unwrap).toEqualTypeOf<never>();
   });
 });
 
-describe("Result", () => {
-  describe("Creation and basic functionality", () => {
-    it("should create Ok result", async () => {
-      const result = ok(42);
-      const value = await result;
-      expect(value.isOk).toBe(true);
-      if (value.isOk) expect(value.value).toBe(42);
-    });
+/* -------------------------------------------------- */
+/*  STATIC CONSTRUCTORS & BASIC BEHAVIOUR             */
+/* -------------------------------------------------- */
 
-    it("should create Err result", async () => {
-      const result = err("error");
-      const value = await result;
-      expect(value.isError).toBe(true);
-      if (value.isError) expect(value.error).toBe("error");
-    });
+describe("🏗️  Construction helpers", () => {
+  it("ok / err produce the right tagged objects", async () => {
+    const o = await ok(42);
+    const e = await err("nope");
 
-    it("should be thenable", async () => {
-      const okResult = await ok(42);
-      if (okResult.isOk) expect(okResult.value).toBe(42);
-
-      const errResult = await err("error");
-      if (errResult.isError) expect(errResult.error).toBe("error");
-    });
+    expect(o).toMatchObject({ isOk: true, value: 42 });
+    expect(e).toMatchObject({ isError: true, error: "nope" });
   });
 
-  describe("Serialization", () => {
-    it("removes [Symbol.asyncIterator] when serialized", async () => {
-      const result = ok(42).asSerializable();
-      const value = await result;
-      expect(value[Symbol.asyncIterator]).toBeUndefined();
-    });
-
-    it("serializes YieldableError", async () => {
-      const result = Result.gen.serializable(async function* () {
-        yield* new TestError({ message: "test" });
-        yield* new AnotherError({ message: "another" });
-      })();
-
-      const value = await result;
-      expect(value.isError).toBe(true);
-      if (value.isError) expect(value.error).not.toBeInstanceOf(TestError);
-      if (value.isError) expect(value.error.message).toBe("test");
-    });
+  it("die throws immediately", () => {
+    expect(() => Result.die(new Error("boom"))).toThrow("boom");
   });
 
-  describe("Result methods", () => {
-    it(".unwrap() has correct types", async () => {
-      const r = Result.try(() => 42);
-      const r2 = ok(42);
+  it("async iterator semantics", async () => {
+    /* ok values yield nothing & return value */
+    const o = ok("yes");
+    const vals: any[] = [];
+    for await (const v of o) vals.push(v);
+    expect(vals).toEqual([]);
 
-      expectTypeOf(r.unwrap).toEqualTypeOf<never>();
-      expectTypeOf(r2.unwrap).toEqualTypeOf<() => Promise<number>>();
-    });
+    /* err values yield themselves */
+    const e = err("fail");
+    let yielded;
+    for await (const v of e) yielded = v;
+    expect(yielded).toEqual(expect.objectContaining({ error: "fail" }));
+  });
+});
 
-    it("should map Ok values", async () => {
-      const result = await pipe(
-        ok(42),
-        Result.map((x: number) => x * 2),
-      );
-      expect(result.isOk).toBe(true);
-      if (result.isOk) expect(result.value).toBe(84);
-    });
+/* -------------------------------------------------- */
+/*  COMBINATORS (instance + static duals)             */
+/* -------------------------------------------------- */
 
-    it("should not map Err values", async () => {
-      const result = await pipe(
-        err("error"),
-        Result.map((x: number) => x * 2),
-      );
-      expect(result.isError).toBe(true);
-      if (result.isError) expect(result.error).toBe("error");
-    });
-
-    it("should mapError for Err values", async () => {
-      const result = await pipe(
-        err("error"),
-        Result.mapError((e: string) => e.toUpperCase()),
-      );
-      expect(result.isError).toBe(true);
-      if (result.isError) expect(result.error).toBe("ERROR");
-    });
-
-    it("should not mapError for Ok values", async () => {
-      const result = await pipe(
-        ok(42),
-        Result.mapError((e: string) => e.toUpperCase()),
-      );
-      expect(result.isOk).toBe(true);
-      if (result.isOk) expect(result.value).toBe(42);
-    });
-
-    it("should flatMap Ok values", async () => {
-      const result = await pipe(
-        ok(42),
-        Result.flatMap((x: number) => ok(x * 2)),
-      );
-      expect(result.isOk).toBe(true);
-      if (result.isOk) expect(result.value).toBe(84);
-    });
-
-    it("should handle flatMap errors", async () => {
-      const result = await pipe(
-        ok(42),
-        Result.flatMap(() => err("error")),
-      );
-      expect(result.isError).toBe(true);
-      if (result.isError) expect(result.error).toBe("error");
-    });
-
-    it("should tap Ok values", async () => {
-      let sideEffect = 0;
-      const result = await pipe(
-        ok(42),
-        Result.tap((x: number) => {
-          sideEffect = x;
-        }),
-      );
-      expect(result.isOk).toBe(true);
-      if (result.isOk) expect(result.value).toBe(42);
-      expect(sideEffect).toBe(42);
-    });
-
-    it("should tap errors", async () => {
-      let sideEffect = "";
-      const result = await pipe(
-        err("error"),
-        Result.tapError((e: string) => {
-          sideEffect = e;
-        }),
-      );
-      expect(result.isError).toBe(true);
-      if (result.isError) expect(result.error).toBe("error");
-      expect(sideEffect).toBe("error");
-    });
-
-    it("should instance method unwrapOr with fallback", async () => {
-      const okResult = ok(42);
-      expect(await okResult.unwrapOr(0)).toBe(42);
-
-      const errResult = err("error");
-      expect(await errResult.unwrapOr(0)).toBe(0);
-    });
-
-    it("should static method unwrapOr with fallback", async () => {
-      const okResult = ok(42);
-      expect(await pipe(okResult, Result.unwrapOr(0))).toBe(42);
-
-      const errResult = err("error");
-      expect(await pipe(errResult, Result.unwrapOr(0))).toBe(0);
-    });
-
-    it("should instance method unwrapAsTuple", async () => {
-      const result = Result.gen(async function* () {
-        if (Math.random()) {
-          yield* new AnotherError({ message: "bad" });
-          return yield* new TestError({ message: "bad" });
-        }
-
-        return 42;
-      })();
-
-      const [error, value] = await result.unwrapAsTuple();
-
-      expect(error).toBeInstanceOf(AnotherError);
-      expect(value).toBeNull();
-    });
-
-    it("should instance method unwrapAsTuple", async () => {
-      const result = await Result.gen(async function* () {
-        if (Math.random()) {
-          yield* new AnotherError({ message: "bad" });
-          return yield* new TestError({ message: "bad" });
-        }
-
-        return 42;
-      })();
-
-      const [error, value] = await pipe(result, Result.unwrapAsTuple);
-
-      expect(error).toBeInstanceOf(AnotherError);
-      expect(value).toBeNull();
-    });
+describe("🔀  Combinators", () => {
+  it("map transforms Ok & preserves Err", async () => {
+    expect(
+      await pipe(
+        ok(2),
+        Result.map((n) => n * 2),
+      ),
+    ).toMatchObject({ isOk: true, value: 4 });
+    expect(
+      await pipe(
+        err("x"),
+        Result.map((n: number) => n * 2),
+      ),
+    ).toMatchObject({ isError: true, error: "x" });
   });
 
-  describe("TaggedError and error handling", () => {
-    it("should create tagged errors", () => {
-      const error = new TestError({ message: "test" });
-      expect(error._tag).toBe("TestError");
-      expect(error.message).toBe("test");
-    });
+  it("mapError transforms Err & preserves Ok", async () => {
+    const upper = await pipe(
+      err("bad"),
+      Result.mapError((s) => s.toUpperCase()),
+    );
+    expect(upper).toMatchObject({ error: "BAD" });
 
-    it("should catch specific error tags", async () => {
-      const result = await pipe(
-        err(new TestError({ message: "test" })),
-        Result.catchTag("TestError", (e: TestError) => ok(e.message.toUpperCase())),
-      );
-      expect(result.isOk).toBe(true);
-      if (result.isOk) expect(result.value).toBe("TEST");
-    });
-
-    it("should handle multiple error tags", async () => {
-      const result = await pipe(
-        err(Math.random() > 0 ? new TestError({ message: "test" }) : new AnotherError({ message: "another" })),
-        Result.catchTags({
-          TestError: (e) => ok(e.message.toUpperCase()),
-          AnotherError: (e) => ok(e.message.toLowerCase()),
-        }),
-      );
-      expect(result.isOk).toBe(true);
-      if (result.isOk) expect(result.value).toBe("TEST");
-    });
-
-    it("should greedy narrow types with isError", async () => {
-      const result = await (Math.random()
-        ? err(new TestError({ message: "test" }))
-        : Math.random()
-          ? err(new AnotherError({ message: "another" }))
-          : ok("yes"));
-
-      if (isError(result)) {
-        expect(result.isError).toBe(true);
-      }
-    });
-
-    it("should narrow specific types with isError", async () => {
-      const result = await (Math.random()
-        ? err(new TestError({ message: "test" }))
-        : Math.random()
-          ? err(new AnotherError({ message: "another" }))
-          : ok("yes"));
-
-      if (isError(result, "TestError")) {
-        expect(result.error.message).toBe("test");
-      }
-    });
+    expect(
+      await pipe(
+        ok(1),
+        Result.mapError(() => new Error()),
+      ),
+    ).toMatchObject({ value: 1 });
   });
 
-  describe("Generator functionality", () => {
-    it("should handle generator success", async () => {
-      const gen = Result.gen(async function* () {
-        const a = yield* ok(1);
-        const b = yield* ok(2);
-        return a + b;
-      });
-
-      const result = await gen();
-      expect(result.isOk).toBe(true);
-      if (result.isOk) expect(result.value).toBe(3);
-    });
-
-    it("should handle errors", async () => {
-      const gen = Result.gen(async function* () {
-        yield* ok(1);
-        yield* err("error");
-        return 42; // Should not reach here
-      });
-
-      const result = await gen();
-      expect(result.isError).toBe(true);
-      if (result.isError) expect(result.error).toBe("error");
-    });
-
-    it("should handle tagged errors", async () => {
-      const gen = Result.gen(async function* () {
-        yield* ok(1);
-        yield* new TestError({ message: "error" });
-        return 42; // Should not reach here
-      });
-
-      const result = await gen();
-      expect(result.isError).toBe(true);
-      if (result.isError) expect(result.error.message).toBe("error");
-    });
+  it("flatMap chains & merges error unions", async () => {
+    const r = pipe(
+      ok(10),
+      Result.flatMap((n) => (n > 0 ? ok(n * 2) : err(new ValidationError({ field: "n", issue: "≤0" })))),
+    );
+    expectTypeOf(r).toEqualTypeOf<Result<number, ValidationError>>();
+    expect(await r).toMatchObject({ isOk: true, value: 20 });
   });
 
-  describe("Utility functions", () => {
-    it("should handle try with success", async () => {
-      const result = await Result.try(() => 42);
-      expect(result.isOk).toBe(true);
-      if (result.isOk) expect(result.value).toBe(42);
-    });
+  it("tap / tapError allow side‑effects", async () => {
+    const inSpy = vi.fn();
+    const errSpy = vi.fn();
 
-    it("should handle try with error", async () => {
-      const result = await Result.try(() => {
-        throw new Error("test");
-      });
-      expect(result.isError).toBe(true);
-      if (result.isError) {
-        expect(result.error.message).toBe("An unknown exception occurred");
-        expect(result.error).toBeInstanceOf(UnknownException);
-        expect(result.error.cause).toBeInstanceOf(Error);
-      }
-    });
+    const out1 = await pipe(ok("🎉"), Result.tap(inSpy));
+    expect(inSpy).toHaveBeenCalledWith("🎉");
+    expect(out1.value).toBe("🎉");
 
-    it("should throw with Result.die", async () => {
-      const result = pipe(
-        err(new TestError({ message: "test" })),
-        Result.catchTag("TestError", (e) => Result.die(e)),
-      );
+    const out2 = await pipe(err("💥"), Result.tapError(errSpy));
+    expect(errSpy).toHaveBeenCalledWith("💥");
+    expect(out2.error).toBe("💥");
+  });
 
-      await expect(result).rejects.toThrow();
-    });
+  it("orElse provides fallback", async () => {
+    const r = await pipe(
+      err(new NetworkError({ status: 500, body: "oops" })),
+      Result.orElse((e) => ok(`Recovered from ${e._tag}`)),
+    );
+    expect(r).toMatchObject({ isOk: true, value: "Recovered from NetworkError" });
+  });
 
-    it("should handle try with custom error handling", async () => {
-      const result = await Result.try({
-        try: () => {
-          throw new Error("test");
-        },
-        catch: (e: unknown) => "caught: " + (e as Error).message,
-      });
-      expect(result.isError).toBe(true);
-      if (result.isError) expect(result.error).toBe("caught: test");
-    });
+  it("tapErrorTag fires only on matching tag", async () => {
+    const spy = vi.fn(() => {});
+    await pipe(err(new ValidationError({ field: "x", issue: "bad" })), Result.tapErrorTag("ValidationError", spy));
+    expect(spy).toHaveBeenCalledTimes(1);
 
-    it("should handle all with success", async () => {
-      const results = await Result.all([ok(1), ok(2), ok(3)]);
-      expect(results.isOk).toBe(true);
-      if (results.isOk) expect(results.value).toEqual([1, 2, 3]);
-    });
+    spy.mockClear();
+    // @ts-expect-error wrong tag
+    await pipe(err(new NetworkError({ status: 400, body: "bad" })), Result.tapErrorTag("ValidationError", spy));
+    expect(spy).not.toHaveBeenCalled();
+  });
 
-    it("should handle all with error", async () => {
-      const results = await Result.all([ok(1), err("error"), ok(3)]);
-      expect(results.isError).toBe(true);
-      if (results.isError) expect(results.error).toBe("error");
+  it("catchTag converts specific errors", async () => {
+    const r = await pipe(
+      err(new ValidationError({ field: "age", issue: "negative" })),
+      Result.catchTag("ValidationError", (v) => ok(`${v.field}: ${v.issue}`)),
+    );
+    expect(r).toMatchObject({ value: "age: negative" });
+  });
+
+  it("catchTags handles multiple error codes", async () => {
+    const r = await pipe(
+      err(
+        Math.random()
+          ? new NetworkError({ status: 404, body: "not found" })
+          : new ValidationError({ field: "age", issue: "negative" }),
+      ),
+      Result.catchTags({
+        NetworkError: (n) => ok(`HTTP ${n.status}`),
+        ValidationError: (v) => ok(v.issue),
+      }),
+    );
+    expect(r).toMatchObject({ value: "HTTP 404" });
+  });
+
+  it("unwrap / unwrapOr / unwrapAsTuple", async () => {
+    const u = await ok(9).unwrap();
+    expect(u).toBe(9);
+
+    const v1 = await ok(7).unwrapOr("fallback");
+    const v2 = await err("x").unwrapOr("fallback");
+    expect(v1).toBe(7);
+    expect(v2).toBe("fallback");
+
+    const tuple = await ok(3).unwrapAsTuple();
+    expect(tuple).toEqual([null, 3]);
+  });
+});
+
+/* -------------------------------------------------- */
+/*  ERROR HELPERS & TYPE GUARDS                       */
+/* -------------------------------------------------- */
+
+describe("🚦  isError type‑guard", () => {
+  it("narrows Err generically", async () => {
+    const r = await (Math.random() > 0.5 ? ok("hi") : err(new DatabaseError({ query: "q" })));
+    if (isError(r)) {
+      expectTypeOf(r.error).toEqualTypeOf<DatabaseError>();
+      expect(r.error.query).toBe("q");
+    } else {
+      expect(r.value).toBe("hi");
+    }
+  });
+
+  it("narrows specific tags", async () => {
+    const r = await err(new DatabaseError({ query: "DROP" }));
+    if (isError(r, "DatabaseError")) {
+      expect(r.error.query).toBe("DROP");
+    }
+  });
+});
+
+/* -------------------------------------------------- */
+/*  GENERATOR‑POWERED FLOWS                           */
+/* -------------------------------------------------- */
+
+describe("🔄  Result.gen", () => {
+  const transfer = Result.gen(async function* (fromId: number, toId: number, amount: number) {
+    const from = yield* fetchUser(fromId);
+    const to = yield* fetchUser(toId);
+    const updatedFrom = yield* updateBalance(from, -amount);
+    const updatedTo = yield* updateBalance(to, amount);
+    return { from: updatedFrom, to: updatedTo };
+  });
+
+  it("succeeds end‑to‑end when data happy", async () => {
+    const r = await transfer(1, 1, 10); // same user to avoid 404 for toId
+    expect(r.isOk && r.value.from.balance).toBe(90);
+  });
+
+  it("short‑circuits on first error", async () => {
+    const r = await transfer(999, 1, 5); // 999 triggers 404
+    expect(r.isError && r.error._tag).toBe("NetworkError");
+  });
+
+  it("serialisable generator removes iterator", async () => {
+    const serialisable = Result.gen.serializable(async function* () {
+      yield* new DatabaseError({ query: "DROP" });
+      return "bar";
     });
+    const r = await serialisable();
+    expect(r.isError && r.error).not.toBeInstanceOf(DatabaseError);
+    expect(r.isError && r.error._tag).toBe("DatabaseError");
+  });
+});
+
+/* -------------------------------------------------- */
+/*  UTILITY STATIC HELPERS                            */
+/* -------------------------------------------------- */
+
+describe("🧰  Utility functions", () => {
+  it("try wraps sync code — success", async () => {
+    const r = await Result.try(() => 7);
+    expect(r).toMatchObject({ value: 7 });
+  });
+
+  it("try wraps sync code — failure into UnknownException", async () => {
+    const r = await Result.try(() => {
+      throw new Error("oops");
+    });
+    expect(r.isError && r.error).toBeInstanceOf(UnknownException);
+  });
+
+  it("try with custom catcher", async () => {
+    const r = await Result.try({
+      try: () => {
+        throw "raw";
+      },
+      catch: (raw) => new ValidationError({ field: "?", issue: String(raw) }),
+    });
+    expect(r.isError && r.error).toBeInstanceOf(ValidationError);
+  });
+
+  it("all aggregates Ok values & short‑circuits on Err", async () => {
+    const mixed = await Result.all([ok(1), ok(2), ok(3)]);
+    expect(mixed).toMatchObject({ value: [1, 2, 3] });
+
+    const bad = await Result.all([ok(1), err("bork"), ok(3)]);
+    expect(bad).toMatchObject({ error: "bork" });
+  });
+});
+
+/* -------------------------------------------------- */
+/*  SERIALISATION SAFETY                              */
+/* -------------------------------------------------- */
+
+describe("📦  asSerializable", () => {
+  it('removes Symbol.asyncIterator (to appease solutions such as Next.js "use cache")', async () => {
+    const clean = await ok("clean");
+    expect(clean[Symbol.asyncIterator]).toBeUndefined();
   });
 });

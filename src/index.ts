@@ -29,7 +29,7 @@ export interface Err<E> {
   [Symbol.asyncIterator](): AsyncGenerator<Err<E>, never, unknown>;
 }
 
-export const _ok = <A>(value: A): Ok<A> => ({
+const _ok = <A>(value: A): Ok<A> => ({
   isOk: true as const,
   isError: false as const,
   value,
@@ -39,7 +39,7 @@ export const _ok = <A>(value: A): Ok<A> => ({
   },
 });
 
-export const _err = <E>(error: E): Err<E> => ({
+const _err = <E>(error: E): Err<E> => ({
   isOk: false as const,
   isError: true as const,
   error,
