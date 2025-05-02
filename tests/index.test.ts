@@ -113,8 +113,8 @@ describe("🔡  Type utilities", () => {
   });
 
   it("`.unwrap` is available only when E = never", () => {
-    expectTypeOf(ok(1).unwrap).toEqualTypeOf<() => Promise<number>>();
-    expectTypeOf(err("bad").unwrap).toEqualTypeOf<never>();
+    expectTypeOf(ok(1).unwrapSafe).toEqualTypeOf<() => Promise<number>>();
+    expectTypeOf(err("bad").unwrapSafe).toEqualTypeOf<never>();
   });
 });
 
@@ -267,7 +267,7 @@ describe("🔀  Combinators", () => {
 
   it("unwrap / unwrapOr / unwrapAsTuple", async () => {
     const okResult = ok(9);
-    const unwrapped = okResult.unwrap();
+    const unwrapped = okResult.unwrapSafe();
     expectTypeOf(unwrapped).toEqualTypeOf<Promise<number>>();
     const u = await unwrapped;
     expect(u).toBe(9);
