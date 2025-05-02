@@ -15,8 +15,12 @@
  *  • JSON safety      — asSerializable removes Symbol.asyncIterator.
  */
 
-import { describe, it, expect, vi, expectTypeOf } from "vitest";
-import { Result, ok, err, pipe, isError, UnknownException, type Ok, type Err } from "../src";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { err, isError, ok, pipe, Result, UnknownException, type Err, type Ok } from "../src";
+
+import { FALLIBLE_PROMISE_PATCH } from "../src/promise-patch";
+
+FALLIBLE_PROMISE_PATCH.DANGEROUSLY_PATCH_PROMISE();
 
 /* -------------------------------------------------- */
 /*  Fake domain types & helpers                       */
@@ -115,6 +119,17 @@ describe("🔡  Type utilities", () => {
   it("`.unwrap` is available only when E = never", () => {
     expectTypeOf(ok(1).unwrapSafe).toEqualTypeOf<() => Promise<number>>();
     expectTypeOf(err("bad").unwrapSafe).toEqualTypeOf<never>();
+  });
+
+  it("`Promise` is patched with `[Symbol.asyncIterator]`", async () => {
+    const p = Promise.resolve(ok(1));
+    expectTypeOf(p[Symbol.asyncIterator]()).toEqualTypeOf<AsyncGenerator<Err<never>, number, unknown>>();
+
+    const r = Result.gen(async function* () {
+      return yield* p;
+    })();
+
+    expect(await r.unwrapSafe()).toEqual(1);
   });
 });
 

@@ -25,6 +25,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./dist/index.js",
+    "./patch": "./dist/promise-patch.js",
     "./package.json": "./package.json"
   },
   "publishConfig": {
