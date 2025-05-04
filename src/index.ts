@@ -111,6 +111,10 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
     });
   }
 
+  static of<R extends ResultLike<any, any>>(result: R): Result<Result.InferOk<R>, Result.InferErr<R>> {
+    return new Result(result);
+  }
+
   then<TResult1 = Ok<A> | Err<E>, TResult2 = never>(
     onfulfilled?:
       | ((value: DistributeOk<Ok<A>> | DistributeErr<Err<E>>) => TResult1 | PromiseLike<TResult1>)
