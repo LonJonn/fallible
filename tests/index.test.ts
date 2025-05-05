@@ -42,34 +42,36 @@ class DatabaseError extends Result.TaggedError("DatabaseError")<{ query: string 
 
 type DomainError = ValidationError | NetworkError | DatabaseError;
 
-const fetchUser = Result.gen(async function* (id: number) {
-  if (id !== 1) {
-    return yield* new NetworkError({ status: 404, body: "Not found" });
-  }
+const fetchUser = (id: number) =>
+  Result.gen(async function* () {
+    if (id !== 1) {
+      return yield* new NetworkError({ status: 404, body: "Not found" });
+    }
 
-  return {
-    id: 1,
-    name: "Alice",
-    balance: 100,
-  };
-});
+    return {
+      id: 1,
+      name: "Alice",
+      balance: 100,
+    };
+  });
 
-const updateBalance = Result.gen(async function* (user: User, delta: number) {
-  if (delta === 0) {
-    return yield* new ValidationError({ field: "amount", issue: "Cannot be zero" });
-  }
+const updateBalance = (user: User, delta: number) =>
+  Result.gen(async function* () {
+    if (delta === 0) {
+      return yield* new ValidationError({ field: "amount", issue: "Cannot be zero" });
+    }
 
-  if (delta + user.balance < 0) {
-    return yield* new ValidationError({ field: "amount", issue: "Insufficient funds" });
-  }
+    if (delta + user.balance < 0) {
+      return yield* new ValidationError({ field: "amount", issue: "Insufficient funds" });
+    }
 
-  if (Math.random() < 0.05) {
-    // pretend DB flaky
-    return yield* new DatabaseError({ query: "UPDATE users SET balance …" });
-  }
+    if (Math.random() < 0.05) {
+      // pretend DB flaky
+      return yield* new DatabaseError({ query: "UPDATE users SET balance …" });
+    }
 
-  return { ...user, balance: user.balance + delta };
-});
+    return { ...user, balance: user.balance + delta };
+  });
 
 /* -------------------------------------------------- */
 /*  TYPE‑LEVEL UTILITIES                              */
@@ -324,13 +326,14 @@ describe("🚦  isError type‑guard", () => {
 /* -------------------------------------------------- */
 
 describe("🔄  Result.gen", () => {
-  const transfer = Result.gen(async function* (fromId: number, toId: number, amount: number) {
-    const from = yield* fetchUser(fromId);
-    const to = yield* fetchUser(toId);
-    const updatedFrom = yield* updateBalance(from, -amount);
-    const updatedTo = yield* updateBalance(to, amount);
-    return { from: updatedFrom, to: updatedTo };
-  });
+  const transfer = (fromId: number, toId: number, amount: number) =>
+    Result.gen(async function* () {
+      const from = yield* fetchUser(fromId);
+      const to = yield* fetchUser(toId);
+      const updatedFrom = yield* updateBalance(from, -amount);
+      const updatedTo = yield* updateBalance(to, amount);
+      return { from: updatedFrom, to: updatedTo };
+    });
 
   expectTypeOf(transfer).toBeFunction();
 

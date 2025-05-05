@@ -442,14 +442,16 @@ function runAsync_<G extends AsyncGenerator<any, any, any>>(
   );
 }
 
-function gen<Args extends any[], G extends AsyncGenerator<any, any, any>>(
-  fn: (...args: Args) => G,
-): (...args: Args) => Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>> {
-  return (...args: Args) => {
-    const iterator = fn(...args);
-    return runAsync_(iterator);
-  };
+function gen<G extends AsyncGenerator<any, any, any>>(
+  fn: () => G,
+): Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>> {
+  const iterator = fn();
+  return runAsync_(iterator);
 }
+
+gen.serializable = function <G extends AsyncGenerator<any, any, any>>(fn: () => G) {
+  return this(fn).asSerializable();
+};
 
 /* -------------------------------------------------- */
 /*  Errors Helpers                                    */
