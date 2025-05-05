@@ -18,10 +18,6 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { err, isError, ok, pipe, Result, UnknownException, type Err, type Ok } from "../src";
 
-import { FALLIBLE_PROMISE_PATCH } from "../src/promise-patch";
-
-FALLIBLE_PROMISE_PATCH.DANGEROUSLY_PATCH_PROMISE();
-
 /* -------------------------------------------------- */
 /*  Fake domain types & helpers                       */
 /* -------------------------------------------------- */
@@ -119,17 +115,6 @@ describe("🔡  Type utilities", () => {
   it("`.unwrap` is available only when E = never", () => {
     expectTypeOf(ok(1).unwrapSafe).toEqualTypeOf<() => Promise<number>>();
     expectTypeOf(err("bad").unwrapSafe).toEqualTypeOf<never>();
-  });
-
-  it("`Promise` is patched with `[Symbol.asyncIterator]`", async () => {
-    const p = Promise.resolve(ok(1));
-    expectTypeOf(p[Symbol.asyncIterator]()).toEqualTypeOf<AsyncGenerator<Err<never>, number, unknown>>();
-
-    const r = Result.gen(async function* () {
-      return yield* p;
-    })();
-
-    expect(await r.unwrapSafe()).toEqual(1);
   });
 });
 
@@ -364,19 +349,6 @@ describe("🔄  Result.gen", () => {
     >();
     expect(r.isError && r.error._tag).toBe("NetworkError");
   });
-
-  it("serialisable generator removes iterator", async () => {
-    const serialisable = Result.gen.serializable(async function* () {
-      yield* new DatabaseError({ query: "DROP" });
-      return "bar";
-    });
-    expectTypeOf(serialisable).toBeFunction();
-
-    const r = await serialisable();
-    expectTypeOf(r).toEqualTypeOf<Ok<string> | Err<DatabaseError>>();
-    expect(r.isError && r.error).not.toBeInstanceOf(DatabaseError);
-    expect(r.isError && r.error._tag).toBe("DatabaseError");
-  });
 });
 
 /* -------------------------------------------------- */
@@ -414,17 +386,6 @@ describe("🧰  Utility functions", () => {
     expect(await mixed).toMatchObject({ value: [1, 2, 3] });
     expectTypeOf(mixed).toEqualTypeOf<Result<readonly [number, number, number], never>>();
 
-    const bad = Result.all([ok(1), err("bork"), ok(3)]);
-    expect(await bad).toMatchObject({ error: "bork" });
-    expectTypeOf(bad).toEqualTypeOf<Result<readonly [number, never, number], string>>();
-  });
-
-  it(".all() supports Result-like", async () => {
-    const fallible = async () => await ok(1);
-
-    const mixed = Result.all([fallible(), fallible(), fallible()]);
-    expect(await mixed).toMatchObject({ value: [1, 1, 1] });
-    expectTypeOf(mixed).toEqualTypeOf<Result<readonly [number, number, number], never>>();
     const bad = Result.all([ok(1), err("bork"), ok(3)]);
     expect(await bad).toMatchObject({ error: "bork" });
     expectTypeOf(bad).toEqualTypeOf<Result<readonly [number, never, number], string>>();
