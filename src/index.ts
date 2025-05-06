@@ -471,23 +471,24 @@ export function TaggedError<Tag extends string>(
     ? void
     : { readonly [P in keyof Payload as P extends "_tag" ? never : P]: Payload[P] },
 ) => YieldableError & { readonly _tag: Tag } & Readonly<Payload> {
-  class Base extends YieldableError {
-    readonly _tag = tag;
-    private readonly _payload: any;
+  const Base = {
+    Error: class extends YieldableError {
+      readonly _tag = tag;
 
-    constructor(payload: any) {
-      super(tag);
-      Object.setPrototypeOf(this, new.target.prototype);
-      Object.assign(this, payload);
-      this._payload = payload;
-    }
+      constructor(payload: any) {
+        super(payload?.message, payload?.cause ? { cause: payload.cause } : undefined);
+        Object.setPrototypeOf(this, new.target.prototype);
+        Object.assign(this, payload);
+      }
 
-    toJSON() {
-      return { _tag: this._tag, ...JSON.parse(JSON.stringify(this._payload)) };
-    }
-  }
-  (Base.prototype as any).name = tag;
-  return Base as any;
+      toJSON() {
+        const { toJSON, ...properties } = this;
+        return { _tag: this._tag, ...JSON.parse(JSON.stringify(properties)) };
+      }
+    } as any,
+  };
+  Base.Error.prototype.name = tag;
+  return Base.Error;
 }
 
 export class UnknownException extends TaggedError("UnknownException")<{
