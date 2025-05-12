@@ -145,6 +145,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   static die = die;
 
   static gen = gen;
+  static fn = fn;
   static TaggedError = TaggedError;
   static isError = isError;
   static try = try_;
@@ -441,6 +442,19 @@ function runAsync_<G extends AsyncGenerator<any, any, any>>(
     })(),
   );
 }
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>>(
+  fn: (...args: Args) => G,
+): (...args: Args) => Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>> {
+  return (...args: Args) => {
+    const iterator = fn(...args);
+    return runAsync_(iterator);
+  };
+}
+
+fn.serializable = function <Args extends any[], G extends AsyncGenerator<any, any, any>>(fn: (...args: Args) => G) {
+  return (...args: Args) => this(fn)(...args).asSerializable();
+};
 
 function gen<G extends AsyncGenerator<any, any, any>>(
   fn: () => G,

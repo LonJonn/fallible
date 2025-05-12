@@ -354,6 +354,63 @@ describe("🔄  Result.gen", () => {
   });
 });
 
+describe("🔄  Result.fn", () => {
+  it("should return a function that returns a Result", async () => {
+    const fn = Result.fn(async function* () {
+      return "hello";
+    });
+
+    const result = fn();
+    expectTypeOf(result).toEqualTypeOf<Result<string, never>>();
+    expect(await result).toMatchObject({ isOk: true, value: "hello" });
+  });
+
+  it("should accept 0 arguments", async () => {
+    const greet = Result.fn(async function* () {
+      return "hi";
+    });
+
+    expectTypeOf(greet).toEqualTypeOf<() => Result<string, never>>();
+
+    const result = greet();
+    expect(await result).toMatchObject({ isOk: true, value: "hi" });
+  });
+
+  it("should accept 1 or more arguments", async () => {
+    const add = Result.fn(async function* (a: number, b: number) {
+      if (a < 0 || b < 0) {
+        return yield* err(new ValidationError({ field: "input", issue: "negative numbers" }));
+      }
+      return a + b;
+    });
+
+    expectTypeOf(add).toEqualTypeOf<(a: number, b: number) => Result<number, ValidationError>>();
+
+    const success = await add(2, 3);
+    expect(success).toMatchObject({ isOk: true, value: 5 });
+
+    const failure = await add(-1, 3);
+    expect(failure).toMatchObject({
+      isError: true,
+      error: expect.objectContaining({
+        _tag: "ValidationError",
+        field: "input",
+        issue: "negative numbers",
+      }),
+    });
+  });
+
+  it("fn.serializable should call .asSerializable() under the hood", async () => {
+    const complexFn = Result.fn.serializable(async function* (_obj: { nested: { value: number } }) {
+      yield* new ValidationError({ field: "obj", issue: "bad" });
+    });
+
+    const result = await complexFn({ nested: { value: 42 } });
+    expect(result[Symbol.asyncIterator]).toBeUndefined();
+    expect(result.isError && result.error).not.toBeInstanceOf(ValidationError);
+  });
+});
+
 /* -------------------------------------------------- */
 /*  UTILITY STATIC HELPERS                            */
 /* -------------------------------------------------- */
