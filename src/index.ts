@@ -77,6 +77,9 @@ const die = (value: unknown): Result<never, never> => {
 };
 
 export namespace Result {
+  export type Ok<A> = import(".").Ok<A>;
+  export type Err<E> = import(".").Err<E>;
+
   /* Extracts the Ok channel of a Result */
   export type InferOk<R extends ResultLike<any, any>> = InferResult<R>[0];
 
