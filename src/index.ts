@@ -71,7 +71,7 @@ const _err = <E>(error: E): Err<E> => ({
 });
 
 export const ok = <A>(value: A): Result<A, never> => new Result(_ok(value));
-export const err = <E>(error: E): Result<never, E> => new Result(_err(error));
+export const err = <E, Tag extends string>(error: E | { _tag?: Tag }): Result<never, E> => new Result(_err(error as E));
 const die = (value: unknown): Result<never, never> => {
   throw value;
 };
