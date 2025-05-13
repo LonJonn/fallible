@@ -35,21 +35,6 @@ type InferResult<R extends ResultLike<any, any>> =
           : R extends Ok<infer A> | Err<infer E>
             ? [A, E]
             : never;
-
-export interface Ok<A> {
-  readonly isOk: true;
-  readonly isError: false;
-  readonly value: A;
-  [Symbol.asyncIterator](): AsyncGenerator<never, A, unknown>;
-}
-
-export interface Err<E> {
-  readonly isOk: false;
-  readonly isError: true;
-  readonly error: E;
-  [Symbol.asyncIterator](): AsyncGenerator<Err<E>, never, unknown>;
-}
-
 const _ok = <A>(value: A): Ok<A> => ({
   isOk: true as const,
   isError: false as const,
@@ -76,9 +61,23 @@ const die = (value: unknown): Result<never, never> => {
   throw value;
 };
 
+export type Ok<A> = Result.Ok<A>;
+export type Err<E> = Result.Err<E>;
+
 export namespace Result {
-  export type Ok<A> = import(".").Ok<A>;
-  export type Err<E> = import(".").Err<E>;
+  export interface Ok<A> {
+    readonly isOk: true;
+    readonly isError: false;
+    readonly value: A;
+    [Symbol.asyncIterator](): AsyncGenerator<never, A, unknown>;
+  }
+
+  export interface Err<E> {
+    readonly isOk: false;
+    readonly isError: true;
+    readonly error: E;
+    [Symbol.asyncIterator](): AsyncGenerator<Err<E>, never, unknown>;
+  }
 
   /* Extracts the Ok channel of a Result */
   export type InferOk<R extends ResultLike<any, any>> = InferResult<R>[0];
