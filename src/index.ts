@@ -471,7 +471,7 @@ gen.serializable = function <G extends AsyncGenerator<any, any, any>>(fn: () => 
 /*  Errors Helpers                                    */
 /* -------------------------------------------------- */
 
-class YieldableError extends Error {
+class YieldableError {
   async *[Symbol.asyncIterator](): AsyncGenerator<Err<this>, never, unknown> {
     yield _err(this);
     return undefined as never;
@@ -490,7 +490,7 @@ export function TaggedError<Tag extends string>(
       readonly _tag = tag;
 
       constructor(payload: any) {
-        super(payload?.message, payload?.cause ? { cause: payload.cause } : undefined);
+        super();
         Object.setPrototypeOf(this, new.target.prototype);
         Object.assign(this, payload);
       }
@@ -506,12 +506,11 @@ export function TaggedError<Tag extends string>(
 }
 
 export class UnknownException extends TaggedError("UnknownException")<{
+  message: string;
   cause: unknown;
-  message?: string | undefined;
 }> {
-  constructor(error: { cause: unknown; message?: string }) {
-    super(error);
-    this.message = error.message || "An unknown exception occurred";
+  constructor({ message = "An unknown exception occurred", cause }: { message?: string; cause: unknown }) {
+    super({ message, cause });
   }
 
   toJSON() {

@@ -18,6 +18,8 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { err, isError, ok, pipe, Result, UnknownException, type Err, type Ok } from "../src";
 
+it("scratchpad", () => {});
+
 /* -------------------------------------------------- */
 /*  Fake domain types & helpers                       */
 /* -------------------------------------------------- */
