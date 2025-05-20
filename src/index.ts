@@ -320,7 +320,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   // ---- catchTag --------------------------------------------------------------------------
   catchTag<const Tag extends Result.TagsOf<E>, A2, E2>(
     tag: Tag,
-    cb: (e: Extract<E, { _tag: Tag }>) => Result<A2, E2>,
+    cb: (e: NoInfer<Extract<E, { _tag: Tag }>>) => Result<A2, E2>,
   ): Result<A | A2, Exclude<E, { _tag: Tag }> | E2> {
     return new Result(
       this.then(async (r) => {
@@ -332,14 +332,14 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   }
 
   static catchTag = dual<
-    <E, const Tag extends Result.TagsOf<E>, A2, E2>(
+    <E extends { _tag: string }, const Tag extends Result.TagsOf<E>, A2, E2>(
       tag: Tag,
-      cb: (e: Extract<E, { _tag: Tag }>) => Result<A2, E2>,
+      cb: (e: NoInfer<Extract<E, { _tag: Tag }>>) => Result<A2, E2>,
     ) => <A>(self: Result<A, E>) => Result<A | A2, Exclude<E, { _tag: Tag }> | E2>,
-    <E, const Tag extends Result.TagsOf<E>, A2, E2, A>(
+    <E extends { _tag: string }, const Tag extends Result.TagsOf<E>, A2, E2, A>(
       self: Result<A, E>,
       tag: Tag,
-      cb: (e: Extract<E, { _tag: Tag }>) => Result<A2, E2>,
+      cb: (e: NoInfer<Extract<E, { _tag: Tag }>>) => Result<A2, E2>,
     ) => Result<A | A2, Exclude<E, { _tag: Tag }> | E2>
   >(3, (self, tag, cb) => self.catchTag(tag, cb));
 
