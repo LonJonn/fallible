@@ -2,12 +2,12 @@
 
 > **A tiny, generator‑powered Result pattern implementation for TypeScript**
 
-`fallible` brings the ergonomics of Rust‑style `Result` and Kotlin `Either` into modern TypeScript **without adding runtime weight**:
+The goal of this library is to provide a familiar async/await like API, but with tracked, type-safe error handling.
 
 - ✅ *Promise‑like* — `await` or `.then()` a `Result` directly
-- ✅ *Generator‑powered* control‑flow via `Result.gen`
+- ✅ *Generator‑powered* control‑flow via `Result.gen` and `Result.fn`
 - ✅ *First‑class type‑safety* for success **and** error channels
-- ✅ *Data‑first / data‑last* helpers (`pipe`, `flow`, `dual`)
+- ✅ *Data‑first / data‑last* helpers (`pipe`, `flow`)
 - ✅ *No dependencies*, <1 KB gzipped
 
 ---
@@ -15,8 +15,6 @@
 ## 📦 Installation
 
 ```bash
-npm install fallible
-# or
 pnpm add fallible
 ```
 
@@ -24,12 +22,10 @@ pnpm add fallible
 
 ## 🚀 Quick start
 
-> **Note:** Type annotations below are included for clarity, but inferred automatically.
-
 ### Creating Results
 
 ```ts
-import { Result, ok, pipe } from "fallible";
+import { Result } from "fallible";
 
 declare const queryDb: <T>(query: string) => Result<T, DatabaseError>;
 
@@ -37,7 +33,7 @@ declare const queryDb: <T>(query: string) => Result<T, DatabaseError>;
 class BannedAccountError extends Result.TaggedError("BannedAccountError")<{ reason: string }> {}
 
 // Define your Result function
-const getUser = Result.gen(async function* (id: string) {
+const getUser = Result.fn(async function* (id: string) {
   // `yield*` will unwrap Ok values and pass Err values through, tracking them at the type level
   const user = yield* queryDb<User>(`SELECT * FROM users WHERE id = ${id}`);
 
@@ -49,111 +45,64 @@ const getUser = Result.gen(async function* (id: string) {
   return user;
 });
 
-// Will have the following type:
+// Will have the following type (Notice the union of errors):
 declare const getUser: (id: string) => Result<User, DatabaseError | BannedAccountError>;
 ```
+
+### Consuming Results
 
 ```ts
 // Result's are Promise-like so you can just unwrap them with `await`
 const user: Ok<User> | Err<DatabaseError> | Err<BannedAccountError> = await getUser("1");
 
+// Type-narrowing on `.isOk` or `.isError`
 if (user.isError) {
-  user.error; // -> DatabaseError | BannedAccountError
-} else {
-  user.value; // -> User
+  return user.error; // -> DatabaseError | BannedAccountError
 }
 
-// --- Or use the `isError` helper
+user.value; // -> User
+```
 
-if (isError(user, "BannedAccountError")) {
-  // user is now narrowed to Err<BannedAccountError>
+#### `Result.isError` helper to handle case by case (Exclude specific tags)
+
+```ts
+if (Result.isError(user, "BannedAccountError")) {
+  // user is now narrowed to Err<BannedAccountError> and so we have .reason
   console.warn(user.error.reason);
+} else {
+  user; // -> Ok<User> | Err<DatabaseError>
 }
+```
 
-// --- Or use the `unwrapOr` helper
+#### Modifier APIs
 
+```ts
+// Unwrap the Ok channel or return a default value
 const user: User | null = await getUser("1").unwrapOr(null);
 
-// --- Or use the Result modifier APIs
-
-// Result<string | null, never>
-const userNameResult: Result<string | null, never> = pipe(
-  getUser("1"),
-  Result.andThen((user) => user.name),
-  Result.catchTags({
-    DatabaseError: () => ok(null),
-    BannedAccountError: (e) => ok(`Banned User (${e.reason})`),
-  }),
-);
-
-// --- Then concurrently run multiple Results (Short-circuits on first error)
-
-const combined: Result<[User, string | null], DatabaseError | BannedAccountError> = Result.all([
-  getUser("1"),
-  userNameResult,
-]);
+// Map the Ok channel or provide fallbacks for specific tags in Err channel
+const userNameResult: Result<string | null, never> = getUser("1")
+  .andThen((user) => user.name)
+  .catchTags({
+    DatabaseError: () => Result.ok(null),
+    BannedAccountError: (e) => Result.ok(`Banned User (${e.reason})`),
+  });
 ```
 
 ---
 
-## 🧩 API overview
+## 🧩 API overview
 
-|  Category           | Helpers                                                    | Description                                            |
-| ------------------- | ---------------------------------------------------------- | ------------------------------------------------------ |
-| **Core**            | `Ok`, `Err`, `Result`                                      | Tagged union representing success / failure            |
-| **Constructors**    | `ok`, `err`                                                | Wrap a raw value or error                              |
-| **Promise helpers** | `.then`, `unwrapOr`                                        | `Result` is `PromiseLike` – interoperable with `await` |
-| **Transform**       | `map`, `mapError`, `flatMap / andThen`                     | Data‑first & data‑last signatures (powered by `dual`)  |
-| **Side‑effects**    | `tap`, `tapError`, `tapErrorTag`                           | Effectful inspection without transforming              |
-| **Recovery**        | `orElse`, `catchTag`, `catchTags`                          | Pattern‑match & recover from errors                    |
-| **Generators**      | `Result.gen`                                               | Write synchronous‑looking async pipelines              |
-| **Utilities**       | `try`, `all`, `isError`, `TaggedError`, `UnknownException` |
-
-### Result.gen — sequential async pipelines
-
-```ts
-const fetchJson = Result.gen(function* (url: string) {
-  const res = yield* Result.try(() => fetch(url)); // Err<UnknownException> on network failure
-  if (!res.ok) return err(new HttpError(res.status)); // early‑return an error
-  const body = yield* Result.try(() => res.json()); // still type‑safe ✅
-  return body satisfies unknown; // Compiler knows `body` type!
-});
-
-const data = await fetchJson("/api/things").unwrapOr({});
-```
-
-### Pattern‑matching with tagged errors
-
-```ts
-class NotFound extends TaggedError("NotFound")<{}> {}
-class Invalid extends TaggedError("Invalid")<{ field: string }> {}
-
-const result: Result<User, NotFound | Invalid> = Result.gen(...)
-
-const user: Result<User | { message: string }, never> = pipe(
-  result,
-  Result.catchTags({
-    Invalid: (e) => ok({ message: `${e.payload.field} is invalid` }),
-    NotFound: () => ok({ message: "Nothing here" }),
-  }),
-);
-```
-
-### Composing many results
-
-```ts
-const res = Result.all([ok(1), ok(2), err("bang")]);
-
-await res; // → Err<"bang"> (short‑circuits on first error)
-```
-
-### Type‑safe guards
-
-```ts
-if (Result.isError(res, "Invalid")) {
-  // res is now Err<Invalid>, fully narrowed ✨
-}
-```
+| Category         | Helpers                                                           | Description                                            |
+| ---------------- | ----------------------------------------------------------------- | ------------------------------------------------------ |
+| **Core**         | `ok`, `err`, `Result.die`, `Result.TaggedError`, `Result.isError` | Tagged union representing success / failure            |
+| **Creating**     | `Result.gen`, `Result.fn`, `Result.try`                           | Write synchronous‑looking async pipelines              |
+| **Consuming**    | `.unwrap`, `.unwrapOr`, `.unwrapAsTuple`                          | `Result` is `PromiseLike` – interoperable with `await` |
+| **Transform**    | `.map`, `.mapError`, `.flatMap`/`.andThen`                        | Data‑first & data‑last signatures (powered by `dual`)  |
+| **Side-effects** | `.tap`, `.tapError`, `.tapErrorTag`                               | Effectful inspection without transforming              |
+| **Recovery**     | `.orElse`, `.catchTag`, `.catchTags`                              | Pattern‑match & recover from errors                    |
+| **Utilities**    | `Result.all`, `Result.of`, `Result.asSerializable`                | Error handling and composition                         |
+| **Type helpers** | `Ok`, `Err`, `Result.InferOk`, `Result.InferErr`, `Result.TagsOf` | Type-level utilities for extracting types              |
 
 ---
 
@@ -167,7 +116,9 @@ if (Result.isError(res, "Invalid")) {
 
 ## 📚 Full API reference
 
-See the inline JSDoc & source – the entire implementation fits in <300 LOC.
+Inprogress...
+
+See the inline JSDoc, source and tests for the full API.
 
 ---
 
@@ -189,8 +140,9 @@ This project draws heavy inspiration:
 
 - [Effect](https://github.com/Effect-TS/effect) - A powerful TypeScript framework for building type-safe, scalable applications.
 
-  - `Result.gen` inspired by Effect's `Effect.gen`
-  - Modifier APIs like `andThen`, `catchTags`, etc. are inspired by Effect -`pipe`, `flow`, and `dual` utilities are copied directly from Effect's source code (MIT Licensed)
+  - `Result.gen`, `Result.fn` inspired by Effect's `Effect.gen`, `Effect.fn`
+  - Modifier APIs like `andThen`, `catchTags`, etc. are inspired by Effect
+  - `pipe`, `flow`, and `dual` utilities are copied directly from Effect's source code (MIT Licensed)
 
 - [neverthrow](https://github.com/supermacro/neverthrow) - A type-safe error handling solution for TypeScript that helped shape the API design of this library.
 
