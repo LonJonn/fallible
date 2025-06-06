@@ -410,6 +410,7 @@ describe("🔄  Result.fn", () => {
     const result = await complexFn({ nested: { value: 42 } });
     expect(result[Symbol.asyncIterator]).toBeUndefined();
     expect(result.isError && result.error).not.toBeInstanceOf(ValidationError);
+    expect(result.isError && result.error._tag).toBe("ValidationError");
   });
 });
 

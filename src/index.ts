@@ -35,6 +35,7 @@ type InferResult<R extends ResultLike<any, any>> =
           : R extends Ok<infer A> | Err<infer E>
             ? [A, E]
             : never;
+
 const _ok = <A>(value: A): Ok<A> => ({
   isOk: true as const,
   isError: false as const,
@@ -501,7 +502,7 @@ export function TaggedError<Tag extends string>(
 
       toJSON() {
         const { toJSON, ...properties } = this;
-        return { _tag: this._tag, ...JSON.parse(JSON.stringify(properties)) };
+        return JSON.parse(JSON.stringify(properties));
       }
     } as any,
   };
@@ -576,18 +577,3 @@ function all<const R extends readonly Result<any, any>[]>(
     }),
   );
 }
-
-/* -------------------------------------------------- */
-/*  Utility                                           */
-/* -------------------------------------------------- */
-
-// /** Utility type to serialize a value to a JSON-serializable object */
-// type SerializeJSON<T> = T extends (...args: any[]) => any
-//   ? never
-//   : T extends object
-//     ? {
-//         [P in keyof T as SerializeJSON<T[P]> extends never ? never : P]: SerializeJSON<T[P]>;
-//       }
-//     : T extends undefined | null | string | number | boolean
-//       ? T
-//       : never;
