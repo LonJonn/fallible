@@ -1,6 +1,8 @@
 import { dual } from "./utils";
 export { flow, pipe } from "./utils";
 
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 /*
  * fallible – A tiny, generator‑powered Result implementation for TypeScript
  */
@@ -174,6 +176,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   static TaggedError = TaggedError;
   static isError = isError;
   static try = try_;
+  static parseSchema = parseSchema;
   static all = all;
 
   /* -------------------------------------------------- */
@@ -572,6 +575,8 @@ export class UnknownException extends TaggedError("UnknownException")<{
   }
 }
 
+export class ParseError extends TaggedError("ParseError").withCategory("domain")<StandardSchemaV1.FailureResult> {}
+
 export function isError<Result extends ResultLike<unknown, unknown>>(
   value: Result,
 ): value is Extract<Result, Err<unknown>>;
@@ -607,6 +612,24 @@ function try_<A, E>(tryFn: () => A, catchFn?: (e: unknown) => E) {
   } catch (e) {
     return new Result(Promise.resolve(_err(handleError(e))));
   }
+}
+
+function parseSchema<Schema extends StandardSchemaV1, Output extends StandardSchemaV1.InferOutput<Schema>>(
+  schema: Schema,
+  input: unknown,
+): Output extends Result<infer A, infer E> ? Result<A, E | ParseError> : Result<Output, ParseError> {
+  const result = Promise.resolve(schema["~standard"].validate(input));
+
+  // @ts-expect-error - Bad types
+  return new Result(
+    result.then((result) => {
+      if (result.issues) {
+        return err(new ParseError(result as StandardSchemaV1.FailureResult));
+      }
+
+      return result.value instanceof Result ? result.value : ok(result.value as StandardSchemaV1.InferOutput<Schema>);
+    }),
+  );
 }
 
 function all<const R extends readonly Result<any, any>[]>(
