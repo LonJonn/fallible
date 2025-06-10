@@ -106,7 +106,7 @@ export namespace Result {
 
   /* Extracts the tags of an error type */
   export type TagsOf<E> =
-    E extends Result<unknown, infer U>
+    E extends Result<infer _, infer U>
       ? TagsOf<U>
       : E extends Err<infer U>
         ? TagsOf<U>
@@ -454,7 +454,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   }
 
   static catchCategory<const Category extends Result.CategoriesOf<E>, A2, E2, A, E>(
-    ...args: [...Category[], (e: NoInfer<ExtractCategories<E, Category>>) => Result<A2, E2>]
+    ...args: [...(Category | Result.CategoriesOf<E>)[], (e: NoInfer<ExtractCategories<E, Category>>) => Result<A2, E2>]
   ) {
     return (self: Result<A, E>) =>
       self.catchCategory(...args) as Result<A | A2, Exclude<E, ExtractCategories<E, Category>> | E2>;
