@@ -9,6 +9,8 @@ export { flow, pipe } from "./utils";
 /*  Result core                                       */
 /* -------------------------------------------------- */
 
+const CATEGORY_KEY = Symbol("@fallible/_category");
+
 type DistributeOk<A> = A extends Ok<infer U> ? (U extends unknown ? Ok<U> : never) : never;
 type DistributeErr<E> = E extends Err<infer U> ? (U extends unknown ? Err<U> : never) : never;
 
@@ -35,6 +37,14 @@ type InferResult<R extends ResultLike<any, any>> =
           : R extends Ok<infer A> | Err<infer E>
             ? [A, E]
             : never;
+
+type HasCategory<T, Category extends string> = T extends { [CATEGORY_KEY]: readonly string[] }
+  ? Category extends Result.CategoriesOf<T>
+    ? T
+    : never
+  : never;
+
+type ExtractCategories<T, Category extends Result.CategoriesOf<T>> = T extends any ? HasCategory<T, Category> : never;
 
 const _ok = <A>(value: A): Ok<A> => ({
   isOk: true as const,
@@ -105,6 +115,10 @@ export namespace Result {
             ? T
             : never
           : never;
+
+  export type CategoriesOf<T> = T extends { [CATEGORY_KEY]: readonly string[] }
+    ? T[typeof CATEGORY_KEY][number]
+    : never;
 }
 
 export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>> {
@@ -421,6 +435,30 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
         }[keyof Cases]
     >
   >(2, (self, cases) => self.catchTags(cases));
+
+  // ---- catchCategory ----------------------------------------------------------------------
+
+  catchCategory<const Category extends Result.CategoriesOf<E>, A2, E2>(
+    ...args: [...(Category | Result.CategoriesOf<E>)[], (e: NoInfer<ExtractCategories<E, Category>>) => Result<A2, E2>]
+  ): Result<A | A2, Exclude<E, ExtractCategories<E, Category>> | E2> {
+    const cb = args.pop() as (e: NoInfer<ExtractCategories<E, Category>>) => Result<A2, E2>;
+    const category = args;
+
+    return new Result(
+      this.then(async (r) => {
+        if (r.isOk) return r;
+        if (!category.some((c) => (r.error as any)[CATEGORY_KEY].includes(c))) return r as any;
+        return await cb(r.error as any);
+      }),
+    );
+  }
+
+  static catchCategory<const Category extends Result.CategoriesOf<E>, A2, E2, A, E>(
+    ...args: [...Category[], (e: NoInfer<ExtractCategories<E, Category>>) => Result<A2, E2>]
+  ) {
+    return (self: Result<A, E>) =>
+      self.catchCategory(...args) as Result<A | A2, Exclude<E, ExtractCategories<E, Category>> | E2>;
+  }
 }
 
 /* -------------------------------------------------- */
@@ -483,13 +521,19 @@ class YieldableError {
   }
 }
 
-export function TaggedError<Tag extends string>(
-  tag: Tag,
-): new <Payload extends {} = {}>(
+type TaggedErrorConstructor<Tag extends string, Category extends readonly string[] | never = never> = new <
+  Payload extends {} = {},
+>(
   args: keyof Payload extends never
     ? void
     : { readonly [P in keyof Payload as P extends "_tag" ? never : P]: Payload[P] },
-) => YieldableError & { readonly _tag: Tag } & Readonly<Payload> {
+) => YieldableError & { readonly [CATEGORY_KEY]: Category; readonly _tag: Tag } & Readonly<Payload>;
+
+export function TaggedError<Tag extends string>(
+  tag: Tag,
+): TaggedErrorConstructor<Tag> & {
+  withCategory<Category extends readonly string[]>(...category: Category): TaggedErrorConstructor<Tag, Category>;
+} {
   const Base = {
     Error: class extends YieldableError {
       readonly _tag = tag;
@@ -507,6 +551,11 @@ export function TaggedError<Tag extends string>(
     } as any,
   };
   Base.Error.prototype.name = tag;
+  Base.Error.withCategory = function <Category extends readonly string[]>(...category: Category) {
+    return class extends Base.Error {
+      readonly [CATEGORY_KEY] = category;
+    };
+  };
   return Base.Error;
 }
 

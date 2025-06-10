@@ -30,6 +30,10 @@ interface User {
   balance: number;
 }
 
+class DomainError extends Result.TaggedError("DomainError").withCategory("domain") {}
+class SystemError extends Result.TaggedError("SystemError").withCategory("system") {}
+class MixedError extends Result.TaggedError("MixedError").withCategory("domain", "system") {}
+
 class ValidationError extends Result.TaggedError("ValidationError")<{
   field: string;
   issue: string;
@@ -41,8 +45,6 @@ class NetworkError extends Result.TaggedError("NetworkError")<{
 }> {}
 
 class DatabaseError extends Result.TaggedError("DatabaseError")<{ query: string }> {}
-
-type DomainError = ValidationError | NetworkError | DatabaseError;
 
 const fetchUser = (id: number) =>
   Result.gen(async function* () {
@@ -112,7 +114,7 @@ describe("🔡  Type utilities", () => {
   });
 
   it("TagsOf collects `_tag` literals deeply", () => {
-    type Tags = Result.TagsOf<DomainError | { _tag: "Other" }>;
+    type Tags = Result.TagsOf<ValidationError | NetworkError | DatabaseError | { _tag: "Other" }>;
     expectTypeOf<Tags>().toEqualTypeOf<"ValidationError" | "NetworkError" | "DatabaseError" | "Other">();
   });
 
@@ -267,6 +269,32 @@ describe("🔀  Combinators", () => {
     );
     expectTypeOf(r).toEqualTypeOf<Result<string, never>>();
     expect(await r).toMatchObject({ value: "HTTP 404" });
+  });
+
+  describe("catchCategory", () => {
+    const okResult = ok("success") as Result<string, DomainError | SystemError | MixedError>;
+    const domainResult = err(new DomainError()) as Result<string, DomainError>;
+    const mixedResult = err(new MixedError()) as Result<string, DomainError | SystemError | MixedError>;
+
+    it("correctly narrows the error type", async () => {
+      const okResult2 = okResult.catchCategory("domain", (e) => ok(e._tag));
+      await expect(okResult2).resolves.toMatchObject({ isOk: true, value: "success" });
+      expectTypeOf(okResult2).toEqualTypeOf<Result<string, SystemError>>();
+
+      const domainResult2 = domainResult.catchCategory("domain", (e) => ok(e._tag));
+      await expect(domainResult2).resolves.toMatchObject({ isOk: true, value: "DomainError" });
+      expectTypeOf(domainResult2).toEqualTypeOf<Result<string, never>>();
+
+      const mixedResult2 = mixedResult.catchCategory("domain", (e) => ok(e._tag));
+      await expect(mixedResult2).resolves.toMatchObject({ isOk: true, value: "MixedError" });
+      expectTypeOf(mixedResult2).toEqualTypeOf<Result<string, SystemError>>();
+    });
+
+    it("catchCategory allows one or more categories", async () => {
+      const mixedResult2 = mixedResult.catchCategory("domain", "system", (e) => ok(e._tag));
+      await expect(mixedResult2).resolves.toMatchObject({ isOk: true, value: "MixedError" });
+      expectTypeOf(mixedResult2).toEqualTypeOf<Result<string, never>>();
+    });
   });
 
   it("unwrap / unwrapOr / unwrapAsTuple", async () => {
