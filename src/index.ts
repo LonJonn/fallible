@@ -523,7 +523,7 @@ gen.serializable = function <G extends AsyncGenerator<any, any, any>>(fn: () => 
 /*  Errors Helpers                                    */
 /* -------------------------------------------------- */
 
-class YieldableError {
+class YieldableError extends Error {
   async *[Symbol.asyncIterator](): AsyncGenerator<Err<this>, never, unknown> {
     yield _err(this);
     return undefined as never;
