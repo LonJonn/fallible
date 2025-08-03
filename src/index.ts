@@ -337,7 +337,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   }
 
   static orElse = dual<
-    <A2, E2, E>(cb: (e: E) => Result<A2, E2>) => <A>(self: Result<A, E>) => Result<A | A2, E2>,
+    <A2, E2, E>(cb: (e: NoInfer<E>) => Result<A2, E2>) => <A>(self: Result<A, E>) => Result<A | A2, E2>,
     <A2, E2, A, E>(self: Result<A, E>, cb: (e: E) => Result<A2, E2>) => Result<A | A2, E2>
   >(2, (self, cb) => self.orElse(cb));
 
