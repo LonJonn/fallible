@@ -620,13 +620,22 @@ function try_<A, E>(tryFn: () => A, catchFn?: (e: unknown) => E) {
   }
 }
 
+function parseSchema<Schema extends StandardSchemaV1>(
+  schema: Schema,
+): <Output extends StandardSchemaV1.InferOutput<Schema>>(
+  input: unknown,
+) => Output extends Result<infer A, infer E> ? Result<A, E | ParseError> : Result<Output, ParseError>;
 function parseSchema<Schema extends StandardSchemaV1, Output extends StandardSchemaV1.InferOutput<Schema>>(
   schema: Schema,
   input: unknown,
-): Output extends Result<infer A, infer E> ? Result<A, E | ParseError> : Result<Output, ParseError> {
+): Output extends Result<infer A, infer E> ? Result<A, E | ParseError> : Result<Output, ParseError>;
+function parseSchema<Schema extends StandardSchemaV1>(schema: Schema, input?: unknown): any {
+  if (arguments.length === 1) {
+    return (input: unknown) => parseSchema(schema, input);
+  }
+
   const result = Promise.resolve(schema["~standard"].validate(input));
 
-  // @ts-expect-error - Bad types
   return new Result(
     result.then((result) => {
       if (result.issues) {
