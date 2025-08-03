@@ -197,8 +197,14 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
 
   // ---- unwrap -----------------------------------------------------------------------------
 
-  async unwrap(): Promise<A | E> {
-    return this.then((r) => (r.isOk ? r.value : r.error));
+  async unwrap(): Promise<A> {
+    return this.then((r) => {
+      if (r.isError) {
+        throw r.error;
+      }
+
+      return r.value;
+    });
   }
 
   static unwrap = <A, E>(self: Result<A, E>) => {

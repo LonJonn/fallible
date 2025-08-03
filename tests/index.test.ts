@@ -118,9 +118,9 @@ describe("🔡  Type utilities", () => {
     expectTypeOf<Tags>().toEqualTypeOf<"ValidationError" | "NetworkError" | "DatabaseError" | "Other">();
   });
 
-  it("`.unwrap` is available only when E = never", () => {
+  it("`.unwrap` always returns A", () => {
     expectTypeOf(ok(1).unwrap).toEqualTypeOf<() => Promise<number>>();
-    expectTypeOf(err("bad").unwrap).toEqualTypeOf<() => Promise<string>>();
+    expectTypeOf(err("bad").unwrap).toEqualTypeOf<() => Promise<never>>();
   });
 });
 
@@ -303,6 +303,12 @@ describe("🔀  Combinators", () => {
     expectTypeOf(unwrapped).toEqualTypeOf<Promise<number>>();
     const u = await unwrapped;
     expect(u).toBe(9);
+
+    const e = new NetworkError({ status: 500, body: "oops" });
+    const errResult = err(e);
+    const unwrappedErr = errResult.unwrap();
+    expectTypeOf(unwrappedErr).toEqualTypeOf<Promise<never>>();
+    await expect(unwrappedErr).rejects.toThrow(e);
 
     const v1Promise = ok(7).unwrapOr("fallback");
     expectTypeOf(v1Promise).toEqualTypeOf<Promise<number | string>>();
