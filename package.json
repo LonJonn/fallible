@@ -1,6 +1,6 @@
 {
   "name": "fallible",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "packageManager": "pnpm@10.8.1",
   "description": "A simple, type-safe, and composable way to handle errors in TypeScript",
   "type": "module",
