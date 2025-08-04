@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
-import { err, isError, ok, pipe, Result, UnknownException, type Err, type Ok } from "../src";
+import { err, isError, ok, pipe, Result, UnknownException, NoSuchElementException, type Err, type Ok } from "../src";
 
 it("scratchpad", async () => {});
 
@@ -219,6 +219,182 @@ describe("🔀  Combinators", () => {
     expect((await out2).error).toBe("💥");
     expect(errSpy).toHaveBeenCalledWith("💥");
     expectTypeOf(out2).toEqualTypeOf<Result<never, string>>();
+  });
+
+  /* -------------------------------------------------- */
+  /*  FILTER OR FAIL TESTS                              */
+  /* -------------------------------------------------- */
+
+  describe("🔍  filterOrFail", () => {
+    // Test Predicate and Refinement helpers
+    const isPositive = (n: number): boolean => n > 0;
+    const isString = (x: unknown): x is string => typeof x === "string";
+    const isEven = (n: number): boolean => n % 2 === 0;
+
+    describe("with Predicate", () => {
+      it("preserves type A on success", async () => {
+        const result = ok(5).filterOrFail(isPositive);
+        expectTypeOf(result).toEqualTypeOf<Result<number, NoSuchElementException>>();
+        expect(await result).toMatchObject({ isOk: true, value: 5 });
+      });
+
+      it("fails with NoSuchElementException when predicate fails and no failWith provided", async () => {
+        const result = ok(-5).filterOrFail(isPositive);
+        expectTypeOf(result).toEqualTypeOf<Result<number, NoSuchElementException>>();
+        const tuple = await result.unwrapAsTuple();
+        expect(tuple[0]).toBeInstanceOf(NoSuchElementException);
+        expect((tuple[0] as any)._tag).toBe("NoSuchElementException");
+      });
+
+      it("fails with custom error when predicate fails and failWith provided", async () => {
+        const result = ok(-5).filterOrFail(isPositive, (value) => `CustomError: ${value} is not positive`);
+        expectTypeOf(result).toEqualTypeOf<Result<number, string>>();
+        const tuple = await result.unwrapAsTuple();
+        expect(tuple[0]).toBe("CustomError: -5 is not positive");
+      });
+
+      it("passes the original value to failWith callback", async () => {
+        const failWith = vi.fn(
+          (value: number) => new ValidationError({ field: "number", issue: `${value} failed test` }),
+        );
+        const result = ok(-10).filterOrFail(isPositive, failWith);
+
+        await result.unwrapAsTuple();
+        expect(failWith).toHaveBeenCalledWith(-10);
+        expect(failWith).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe("with Refinement", () => {
+      it("narrows type A to B on success", async () => {
+        const result = ok("hello" as unknown).filterOrFail(isString);
+        expectTypeOf(result).toEqualTypeOf<Result<string, NoSuchElementException>>();
+        const unwrapped = await result.unwrap();
+        expect(unwrapped).toBe("hello");
+        expectTypeOf(unwrapped).toEqualTypeOf<string>();
+      });
+
+      it("fails with NoSuchElementException when refinement fails and no failWith provided", async () => {
+        const result = ok(42 as unknown).filterOrFail(isString);
+        expectTypeOf(result).toEqualTypeOf<Result<string, NoSuchElementException>>();
+        const tuple = await result.unwrapAsTuple();
+        expect(tuple[0]).toBeInstanceOf(NoSuchElementException);
+        expect((tuple[0] as any)._tag).toBe("NoSuchElementException");
+      });
+
+      it("fails with custom error when refinement fails and failWith provided", async () => {
+        const result = ok(42 as unknown).filterOrFail(isString, (value) => `NotStringError: ${value} is not a string`);
+        expectTypeOf(result).toEqualTypeOf<Result<string, string>>();
+        const tuple = await result.unwrapAsTuple();
+        expect(tuple[0]).toBe("NotStringError: 42 is not a string");
+      });
+
+      it("passes excluded value to failWith callback", async () => {
+        const failWith = vi.fn(
+          (value: unknown) => new ValidationError({ field: "input", issue: `${value} is not a string` }),
+        );
+        const result = ok(123 as unknown).filterOrFail(isString, failWith);
+
+        await result.unwrapAsTuple();
+        expect(failWith).toHaveBeenCalledWith(123);
+        expect(failWith).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe("error propagation", () => {
+      it("preserves existing errors in the Result", async () => {
+        const errorResult = err(new NetworkError({ status: 404, body: "Not found" }));
+        const result = errorResult.filterOrFail(isPositive);
+        expectTypeOf(result).toEqualTypeOf<Result<never, NetworkError | NoSuchElementException>>();
+
+        const tuple = await result.unwrapAsTuple();
+        expect(tuple[0]).toBeInstanceOf(NetworkError);
+        expect((tuple[0] as any).status).toBe(404);
+      });
+
+      it("combines error types correctly", async () => {
+        const result = ok(10).filterOrFail(isEven, () => new ValidationError({ field: "number", issue: "not even" }));
+        expectTypeOf(result).toEqualTypeOf<Result<number, ValidationError>>();
+        expect(await result).toMatchObject({ isOk: true, value: 10 });
+      });
+    });
+
+    describe("static method (dual)", () => {
+      it("works in data-first style", async () => {
+        const result = Result.filterOrFail(ok(10), isPositive);
+        expectTypeOf(result).toEqualTypeOf<Result<number, NoSuchElementException>>();
+        expect(await result).toMatchObject({ isOk: true, value: 10 });
+      });
+
+      it("works in data-last (pipeable) style", async () => {
+        const result = pipe(ok(10), Result.filterOrFail(isPositive));
+        expectTypeOf(result).toEqualTypeOf<Result<number, NoSuchElementException>>();
+        expect(await result).toMatchObject({ isOk: true, value: 10 });
+      });
+
+      it("works with custom failWith in data-first style", async () => {
+        const result = Result.filterOrFail(ok(-5), isPositive, (n) => `Bad number: ${n}`);
+        expectTypeOf(result).toEqualTypeOf<Result<number, string>>();
+        const tuple = await result.unwrapAsTuple();
+        expect(tuple[0]).toBe("Bad number: -5");
+      });
+
+      it("works with custom failWith in data-last style", async () => {
+        const result = pipe(
+          ok(-5),
+          Result.filterOrFail(isPositive, (n) => new ValidationError({ field: "num", issue: `${n} not positive` })),
+        );
+        expectTypeOf(result).toEqualTypeOf<Result<number, ValidationError>>();
+        const tuple = await result.unwrapAsTuple();
+        expect(tuple[0]).toBeInstanceOf(ValidationError);
+        expect((tuple[0] as any).field).toBe("num");
+      });
+
+      it("works with refinements in pipeable style", async () => {
+        const result = pipe(ok("test" as unknown), Result.filterOrFail(isString));
+        expectTypeOf(result).toEqualTypeOf<Result<string, NoSuchElementException>>();
+        expect(await result).toMatchObject({ isOk: true, value: "test" });
+      });
+    });
+
+    describe("complex scenarios", () => {
+      it("chains with other combinators", async () => {
+        const result = pipe(
+          ok(10),
+          Result.filterOrFail(isPositive, (n) => new ValidationError({ field: "input", issue: `${n} not positive` })),
+          Result.map((n) => n * 2),
+          Result.filterOrFail(isEven),
+        );
+
+        expectTypeOf(result).toEqualTypeOf<Result<number, ValidationError | NoSuchElementException>>();
+        expect(await result).toMatchObject({ isOk: true, value: 20 });
+      });
+
+      it("handles generator flows", async () => {
+        const processNumber = (input: unknown) =>
+          Result.gen(async function* () {
+            const str = yield* ok(input).filterOrFail(
+              isString,
+              () => new ValidationError({ field: "input", issue: "not string" }),
+            );
+            const num = yield* Result.try(() => parseInt(str, 10));
+            const positive = yield* ok(num).filterOrFail(
+              isPositive,
+              () => new ValidationError({ field: "number", issue: "not positive" }),
+            );
+            return positive * 2;
+          });
+
+        const success = await processNumber("42");
+        expect(success).toMatchObject({ isOk: true, value: 84 });
+
+        const failureType = await processNumber(123);
+        expect(failureType.isError && failureType.error).toBeInstanceOf(ValidationError);
+
+        const failureValue = await processNumber("-5");
+        expect(failureValue.isError && failureValue.error).toBeInstanceOf(ValidationError);
+      });
+    });
   });
 
   it("orElse provides fallback", async () => {

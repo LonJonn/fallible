@@ -900,3 +900,15 @@ export const dual: {
       };
   }
 };
+
+/* -------------------------------------------------- */
+/*  Predicate and Refinement types                   */
+/* -------------------------------------------------- */
+
+export interface Predicate<A> {
+  (a: A): boolean;
+}
+
+export interface Refinement<A, B extends A> {
+  (a: A): a is B;
+}

@@ -1,3 +1,5 @@
+import type { Predicate, Refinement } from "./utils";
+
 import { dual } from "./utils";
 export { flow, pipe } from "./utils";
 
@@ -271,6 +273,54 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   }
 
   static andThen = this.flatMap;
+
+  // ---- filterOrFail ----------------------------------------------------------------------
+  filterOrFail<B extends A>(predicate: Refinement<A, B>): Result<B, E | NoSuchElementException>;
+  filterOrFail<B extends A, E2>(
+    predicate: Refinement<A, B>,
+    orFailWith: (value: Exclude<A, B>) => E2,
+  ): Result<B, E | E2>;
+  filterOrFail(predicate: Predicate<A>): Result<A, E | NoSuchElementException>;
+  filterOrFail<E2>(predicate: Predicate<A>, orFailWith: (value: A) => E2): Result<A, E | E2>;
+  filterOrFail<B extends A, E2 = never>(
+    predicate: Predicate<A> | Refinement<A, B>,
+    orFailWith?: ((value: A) => E2) | ((value: Exclude<A, B>) => E2),
+  ): Result<A | B, E | E2 | NoSuchElementException> {
+    return new Result(
+      this.then(async (r) => {
+        if (r.isError) return r;
+        const a = r.value;
+        if (predicate(a)) return _ok(a);
+
+        return _err(orFailWith ? orFailWith(a as Exclude<A, B>) : new NoSuchElementException());
+      }),
+    );
+  }
+
+  static filterOrFail = dual<
+    {
+      <A, B extends A>(predicate: Refinement<A, B>): <E>(self: Result<A, E>) => Result<B, E | NoSuchElementException>;
+      <A, B extends A, E2>(
+        predicate: Refinement<A, B>,
+        failWith: (value: Exclude<A, B>) => E2,
+      ): <E>(self: Result<A, E>) => Result<B, E | E2>;
+      <A>(predicate: Predicate<A>): <E>(self: Result<A, E>) => Result<A, E | NoSuchElementException>;
+      <A, E2>(predicate: Predicate<A>, failWith: (value: A) => E2): <E>(self: Result<A, E>) => Result<A, E | E2>;
+    },
+    {
+      <A, B extends A, E>(self: Result<A, E>, predicate: Refinement<A, B>): Result<B, E | NoSuchElementException>;
+      <A, B extends A, E, E2>(
+        self: Result<A, E>,
+        predicate: Refinement<A, B>,
+        failWith: (value: Exclude<A, B>) => E2,
+      ): Result<B, E | E2>;
+      <A, E>(self: Result<A, E>, predicate: Predicate<A>): Result<A, E | NoSuchElementException>;
+      <A, E, E2>(self: Result<A, E>, predicate: Predicate<A>, failWith: (value: A) => E2): Result<A, E | E2>;
+    }
+  >(
+    (args) => args.length >= 2 && args[0] instanceof Result,
+    (self: any, predicate: any, failWith?: any) => self.filterOrFail(predicate, failWith),
+  );
 
   // ---- tap -------------------------------------------------------------------------------
   tap<E2 = never>(cb: (a: A) => Result<never, E2> | void): Result<A, E | E2> {
@@ -578,6 +628,19 @@ export class UnknownException extends TaggedError("UnknownException")<{
 
   toJSON() {
     return { _tag: this._tag, message: this.message, cause: this.cause };
+  }
+}
+
+export class NoSuchElementException extends TaggedError("NoSuchElementException").withCategory("domain")<{
+  message: string;
+  cause?: unknown;
+}> {
+  constructor({ message = "No element found matching the predicate" }: { message?: string } = {}) {
+    super({ message });
+  }
+
+  toJSON() {
+    return { _tag: this._tag, message: this.message };
   }
 }
 
