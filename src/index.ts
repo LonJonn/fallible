@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { Predicate, Refinement } from "./utils";
+import type { EqualsWith, Predicate, Refinement } from "./utils";
 
 import { dual, pipe } from "./utils";
 
@@ -278,10 +278,11 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
   filterOrFail<B extends A>(predicate: Refinement<A, B>): Result<B, E | NoSuchElementException>;
   filterOrFail<B extends A, E2>(
     predicate: Refinement<A, B>,
-    orFailWith: (value: Exclude<A, B>) => E2,
+    orFailWith: (value: EqualsWith<A, B, A, Exclude<A, B>>) => E2,
   ): Result<B, E | E2>;
   filterOrFail(predicate: Predicate<A>): Result<A, E | NoSuchElementException>;
   filterOrFail<E2>(predicate: Predicate<A>, orFailWith: (value: A) => E2): Result<A, E | E2>;
+
   filterOrFail<B extends A, E2 = never>(
     predicate: Predicate<A> | Refinement<A, B>,
     orFailWith?: ((value: A) => E2) | ((value: Exclude<A, B>) => E2),
@@ -302,7 +303,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
       <A, B extends A>(predicate: Refinement<A, B>): <E>(self: Result<A, E>) => Result<B, E | NoSuchElementException>;
       <A, B extends A, E2>(
         predicate: Refinement<A, B>,
-        failWith: (value: Exclude<A, B>) => E2,
+        failWith: (value: EqualsWith<A, B, A, Exclude<A, B>>) => E2,
       ): <E>(self: Result<A, E>) => Result<B, E | E2>;
       <A>(predicate: Predicate<A>): <E>(self: Result<A, E>) => Result<A, E | NoSuchElementException>;
       <A, E2>(predicate: Predicate<A>, failWith: (value: A) => E2): <E>(self: Result<A, E>) => Result<A, E | E2>;
@@ -312,7 +313,7 @@ export class Result<A = never, E = never> implements PromiseLike<Ok<A> | Err<E>>
       <A, B extends A, E, E2>(
         self: Result<A, E>,
         predicate: Refinement<A, B>,
-        failWith: (value: Exclude<A, B>) => E2,
+        failWith: (value: EqualsWith<A, B, A, Exclude<A, B>>) => E2,
       ): Result<B, E | E2>;
       <A, E>(self: Result<A, E>, predicate: Predicate<A>): Result<A, E | NoSuchElementException>;
       <A, E, E2>(self: Result<A, E>, predicate: Predicate<A>, failWith: (value: A) => E2): Result<A, E | E2>;

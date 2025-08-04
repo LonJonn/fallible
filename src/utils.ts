@@ -905,10 +905,18 @@ export const dual: {
 /*  Predicate and Refinement types                   */
 /* -------------------------------------------------- */
 
-export interface Predicate<A> {
+export interface Predicate<in A> {
   (a: A): boolean;
 }
 
-export interface Refinement<A, B extends A> {
+export interface Refinement<in A, out B extends A> {
   (a: A): a is B;
 }
+
+/**
+ * Determines if two types are equal, allowing to specify the return types.
+ *
+ * @since 3.15.0
+ * @category models
+ */
+export type EqualsWith<A, B, Y, N> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? Y : N;
