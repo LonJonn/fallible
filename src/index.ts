@@ -1,9 +1,9 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Predicate, Refinement } from "./utils";
 
-import { dual } from "./utils";
-export { flow, pipe } from "./utils";
+import { dual, pipe } from "./utils";
 
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+export { flow, pipe } from "./utils";
 
 /*
  * fallible – A tiny, generator‑powered Result implementation for TypeScript
@@ -547,16 +547,84 @@ function runAsync_<G extends AsyncGenerator<any, any, any>>(
 
 function fn<Args extends any[], G extends AsyncGenerator<any, any, any>>(
   fn: (...args: Args) => G,
-): (...args: Args) => Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>> {
+): (...args: Args) => Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>>;
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>, B>(
+  fn: (...args: Args) => G,
+  ab: (a: Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>>) => B,
+): (...args: Args) => B;
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>, B, C>(
+  fn: (...args: Args) => G,
+  ab: (a: Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>>) => B,
+  bc: (b: B) => C,
+): (...args: Args) => C;
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>, B, C, D>(
+  fn: (...args: Args) => G,
+  ab: (a: Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>>) => B,
+  bc: (b: B) => C,
+  cd: (c: C) => D,
+): (...args: Args) => D;
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>, B, C, D, E>(
+  fn: (...args: Args) => G,
+  ab: (a: Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>>) => B,
+  bc: (b: B) => C,
+  cd: (c: C) => D,
+  de: (d: D) => E,
+): (...args: Args) => E;
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>, B, C, D, E, F>(
+  fn: (...args: Args) => G,
+  ab: (a: Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>>) => B,
+  bc: (b: B) => C,
+  cd: (c: C) => D,
+  de: (d: D) => E,
+  ef: (e: E) => F,
+): (...args: Args) => F;
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>, B, C, D, E, F, H>(
+  fn: (...args: Args) => G,
+  ab: (a: Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>>) => B,
+  bc: (b: B) => C,
+  cd: (c: C) => D,
+  de: (d: D) => E,
+  ef: (e: E) => F,
+  fh: (f: F) => H,
+): (...args: Args) => H;
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>, B, C, D, E, F, H, I>(
+  fn: (...args: Args) => G,
+  ab: (a: Result<GeneratorReturn<G>, Result.InferErr<GeneratorYield<G>>>) => B,
+  bc: (b: B) => C,
+  cd: (c: C) => D,
+  de: (d: D) => E,
+  ef: (e: E) => F,
+  fh: (f: F) => H,
+  hi: (h: H) => I,
+): (...args: Args) => I;
+
+function fn<Args extends any[], G extends AsyncGenerator<any, any, any>>(
+  generatorFn: (...args: Args) => G,
+  ...operators: Function[]
+): (...args: Args) => any {
   return (...args: Args) => {
-    const iterator = fn(...args);
-    return runAsync_(iterator);
+    const iterator = generatorFn(...args);
+    const result = runAsync_(iterator);
+
+    // @ts-expect-error - Overwrite types
+    return pipe(result, ...operators);
   };
 }
 
-fn.serializable = function <Args extends any[], G extends AsyncGenerator<any, any, any>>(fn: (...args: Args) => G) {
-  return (...args: Args) => this(fn)(...args).asSerializable();
-};
+fn.serializable = function <Args extends any[], G extends AsyncGenerator<any, any, any>>(
+  fn: (...args: Args) => G,
+  ...operators: Function[]
+) {
+  // @ts-expect-error - Overwrite types
+  return this(fn, ...operators, Result.asSerializable);
+} as typeof fn;
 
 function gen<G extends AsyncGenerator<any, any, any>>(
   fn: () => G,
